@@ -54,38 +54,67 @@ do the exploration autonomously and explain every decision."
 - Container discovery: list running containers filtered by the label
 - Multiple containers = parallel experiments (one experiment per container)
 
-## GPU Config Parameters
+## GPU Config Parameters (REAL — from our actual working config)
 
-These map directly to real `gpgpusim.config` entries.
+Baseline GPU: **GTX 480, Fermi, compute capability 2.0**. The benchmark runs
+in ~8 seconds, so live simulation during the demo is viable (no fake demo mode
+strictly required, though keep it as backup).
 
-| UI param | config key | values |
-|----------|-----------|--------|
-| SM Clusters | `-gpgpu_n_clusters` | 14, 28, 56, 84 |
-| Cores/cluster | `-gpgpu_n_cores_per_cluster` | 1, 2, 4 |
-| L1 Data Cache | `-gpgpu_cache:dl1` | 16KB, 32KB, 48KB, 64KB, 128KB |
-| L2 Cache | `-gpgpu_cache:dl2` | 2MB, 4MB, 8MB, 16MB |
-| Warp Scheduler | `-gpgpu_scheduler` | gto, lrr, rrws |
-| DRAM Channels | `-gpgpu_n_mem` | 4, 8, 12, 16 |
-| Shared Memory | `-gpgpu_shmem_size` | 16KB, 32KB, 48KB, 64KB |
+These are the ACTUAL tunable lines in our `gpgpusim.config`:
 
-## Stats To Parse From Simulation Output
+| UI param | config key | baseline | slider values |
+|----------|-----------|----------|---------------|
+| SM Clusters | `-gpgpu_n_clusters` | 15 | 8, 15, 30, 60 |
+| Cores/cluster | `-gpgpu_n_cores_per_cluster` | 1 | 1, 2, 4 |
+| Memory Controllers | `-gpgpu_n_mem` | 6 | 4, 6, 8, 12 |
+| Shared Memory | `-gpgpu_shmem_size` | 49152 | 16384, 32768, 49152 |
+| Warp Scheduler | `-gpgpu_scheduler` | gto | gto, lrr, two_level_active |
+| Schedulers/core | `-gpgpu_num_sched_per_core` | 2 | 1, 2, 4 |
+| L1 Cache (sets) | `-gpgpu_cache:dl1` | N:32:128:4 | edit SETS field: 16,32,64,128 |
+| L2 Cache (sets) | `-gpgpu_cache:dl2` | S:64:128:8 | edit SETS field: 32,64,128 |
 
-| Field | Meaning |
-|-------|---------|
-| `gpu_tot_ipc` | overall IPC — the headline metric |
-| `L1D_total_cache_hit_rate` | L1 data cache hit rate (0.0–1.0) |
-| `L2_total_cache_hit_rate` | L2 cache hit rate |
-| `gpu_stall_dramfull` | DRAM stall cycles (memory pressure indicator) |
-| `gpu_occupancy` | warp occupancy % |
-| `gpu_tot_sim_insn` | total instructions simulated |
-| `gpgpu_simulation_time` | wall-clock sim time |
+### IMPORTANT: cache lines are format strings, not single numbers
+`-gpgpu_cache:dl1 N:32:128:4,L:L:m:N:H,S:64:8,8`
+The format is `<sector>:<nsets>:<linesize>:<assoc>,...`. To change L1 SIZE,
+edit the SETS field (the `32`). Total L1 size = nsets × linesize × assoc.
+So 32:128:4 = 16KB. The config_generator must parse and rewrite ONLY that
+field, preserving the rest of the string exactly. Same for L2 (`64` in dl2).
 
-## Benchmarks (pick 3–4, keep them small)
+## Stats To Parse From Simulation Output (REAL field names)
 
-- **GEMM** — matrix multiply, represents AI workloads, memory-bound at scale
-- **Vectoradd** — trivial, fast, good for testing the pipeline
-- **BFS** — graph traversal, irregular memory access
-- **Reduction** — tests shared memory and warp efficiency
+These are the EXACT strings in our output. Note: output gives MISS rates;
+compute hit_rate = 1 - miss_rate.
+
+| Field in output | Meaning | Example value |
+|-----------------|---------|---------------|
+| `gpu_tot_ipc` | overall IPC — HEADLINE metric | 274.8514 |
+| `gpu_tot_sim_insn` | total instructions | 7569408 |
+| `gpu_tot_sim_cycle` | total cycles | 27540 |
+| `gpu_occupancy` | warp occupancy % | 29.7003% |
+| `gpu_stall_dramfull` | DRAM stall cycles | 532 |
+| `L1D_total_cache_miss_rate` | L1 data MISS rate (hit = 1-this) | 0.6151 |
+| `L2_total_cache_miss_rate` | L2 MISS rate (hit = 1-this) | 0.4937 |
+| `L1I_total_cache_miss_rate` | L1 instruction miss rate | 0.0302 |
+| `L2_BW` | L2 bandwidth GB/Sec | 54.0853 |
+| `gpgpu_n_stall_shd_mem` | shared mem stalls | 160 |
+| `gpgpu_simulation_time` | wall-clock | 8 sec |
+
+Parser regex examples:
+- `gpu_tot_ipc\s*=\s*([\d.]+)`
+- `gpu_occupancy\s*=\s*([\d.]+)%`
+- `L1D_total_cache_miss_rate\s*=\s*([\d.]+)`
+
+## Benchmark
+
+**DCT8x8 (JPEG)** — the discrete cosine transform kernels at the heart of JPEG
+compression. Already compiled and working in the container at the JPEG dir.
+Real, recognizable, runs in 8s. This is our primary benchmark.
+Run command (from inside the JPEG dir where gpgpusim.config lives):
+the executable auto-activates GPGPU-Sim, which reads gpgpusim.config from CWD.
+Input image: cameraman.bmp. Final line on success: `SUCCESS`.
+
+If time permits, add a second benchmark (vectoradd or similar) for contrast,
+but DCT8x8 alone is enough for the demo.
 
 ## The Four Agents
 
