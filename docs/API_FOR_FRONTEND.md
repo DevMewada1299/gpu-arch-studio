@@ -110,6 +110,41 @@ Real example values (baseline DCT8x8): `warp.scoreboard ≈ 995192` (dominant),
 `per_sm_l1d`. Great material for: per-SM heatmap, warp-state donut, DRAM
 bottleneck bars, memory-traffic Sankey/flow, latency histograms.
 
+## Run the backend locally (for integration)
+
+```bash
+cd <repo>
+python -m venv venv && source venv/bin/activate    # if you don't have one
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --reload --port 8000
+```
+- Needs Docker running with the GPGPU-Sim container (`relaxed_shaw`). Without
+  it, `/containers` is empty and runs fail — but you can still develop the UI
+  against mocks (below) and the static endpoints.
+- Quick check: open http://localhost:8000/health.
+
+## Sample payloads for mocking
+
+- **`docs/sample_report.json`** — a REAL `SimReport` (from a baseline DCT8x8
+  run). Drop it straight into your mocks to build the deep-dive view.
+- Sample `Experiment` (history row / run-complete):
+
+```json
+{
+  "exp_id": "89aeccd4",
+  "config": { "n_clusters": 15, "cores_per_cluster": 1, "n_mem": 6,
+              "shmem_size": 49152, "scheduler": "gto",
+              "num_sched_per_core": 2, "l1_sets": 32, "l2_sets": 64 },
+  "stats": { "ipc": 315.2309, "total_insn": 18710528, "total_cycles": 59355,
+             "occupancy": 0.3241, "l1_hit_rate": 0.4583, "l2_hit_rate": 0.699,
+             "l1i_hit_rate": 0.9839, "dram_stalls": 876, "shmem_stalls": 49638,
+             "l2_bw": 82.2801, "sim_time_sec": 21 },
+  "benchmark": "dct8x8", "container_id": "relaxed_shaw",
+  "timestamp": 1718900000.0, "status": "success", "error": null,
+  "log_path": "experiments/89aeccd4/output.log"
+}
+```
+
 ## Notes
 - `/explore` + its SSE (agent reasoning stream) are coming with the agent core;
   shapes will be added here when ready.
