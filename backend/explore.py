@@ -14,6 +14,7 @@ mode can feed pre-run experiments while keeping the agent reasoning live.
 from typing import Callable, Dict, Iterator, List, Optional
 
 from . import agent_engine  # safe: agent_engine imports anthropic lazily
+from . import agent_memory
 from .models import GPUConfig
 
 DEFAULT_MAX_ITERATIONS = 6
@@ -64,13 +65,16 @@ def explore(
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     container=None,
     store=None,
+    memory=None,
     run_fn: Optional[Callable] = None,
     analyze_fn: Optional[Callable] = None,
     propose_fn: Optional[Callable] = None,
 ) -> Iterator[Dict]:
     """Run the autonomous exploration, yielding event dicts.
 
-    Events: iteration_start, experiment, analysis, proposal, converged, error.
+    Events: iteration_start, experiment, analysis, recall, proposal, converged.
+    `memory` (an AgentMemory) enables vector recall of past experiments to
+    ground the orchestrator — the Redis "beyond caching" path.
     """
     if run_fn is None:
         from . import runner  # lazy: pulls in docker only when actually running sims
@@ -107,7 +111,23 @@ def explore(
 
         history.append({"experiment": exp, "analysis": analysis})
 
-        decision = propose_fn(history, goal, constraints)
+        # Agent memory (Redis "beyond caching"): store this experiment, then
+        # recall the most relevant PRIOR experiments to ground the proposal.
+        recalled = None
+        if memory is not None:
+            mem_text = agent_memory.memory_text(exp, analysis)
+            try:
+                memory.remember(
+                    exp.exp_id, mem_text,
+                    metadata={"ipc": exp.stats.ipc, "benchmark": benchmark},
+                )
+                recalled = memory.recall(mem_text, k=3)
+                yield {"type": "recall", "iteration": i, "recalled": recalled}
+            except Exception as exc:  # noqa: BLE001 - memory is best-effort
+                yield {"type": "note", "iteration": i,
+                       "message": f"agent memory unavailable: {exc}"}
+
+        decision = propose_fn(history, goal, constraints, recalled=recalled)
         yield {
             "type": "proposal", "iteration": i,
             "reasoning": decision.reasoning,

@@ -61,6 +61,10 @@ def _make_store():
 
 STORE = _make_store()
 
+from .agent_memory import make_agent_memory
+
+AGENT_MEMORY = make_agent_memory()
+
 app = FastAPI(title="GPU Architecture Studio API")
 app.add_middleware(
     CORSMiddleware,
@@ -264,6 +268,7 @@ async def explore_start(req: ExploreRequest):
         max_iterations=req.max_iterations,
         container=req.container_id,
         store=STORE,
+        memory=AGENT_MEMORY,
         start_config=(
             GPUConfig.from_dict(req.start_config.model_dump())
             if req.start_config else None

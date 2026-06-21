@@ -211,12 +211,15 @@ def propose_next(
     history: List[dict],
     goal: str,
     constraints: Optional[dict] = None,
+    recalled: Optional[List[dict]] = None,
     on_text: Optional[Callable[[str], None]] = None,
 ) -> OrchestratorDecision:
     """The orchestrator: reason over the full history, propose the next config.
 
     `history` is the explore loop's list of {"experiment": Experiment,
-    "analysis": {agent: AgentOutput}}. Uses Sonnet 4.6 with adaptive thinking.
+    "analysis": {agent: AgentOutput}}. `recalled` is an optional list of
+    semantically-similar past experiments from agent memory (RedisVL) to ground
+    the proposal in prior experience. Uses Sonnet 4.6 with adaptive thinking.
     """
     with open(os.path.join(PROMPT_DIR, "orchestrator.md")) as f:
         system = f.read()
@@ -225,11 +228,17 @@ def propose_next(
     latest_block = "\n".join(
         f"  {a}: {latest[a].text}" for a in SPECIALISTS if a in latest
     )
+    recall_block = ""
+    if recalled:
+        recall_block = "\n\nRELEVANT PRIOR EXPERIMENTS (semantic recall from memory):\n" + "\n".join(
+            f"  - {r.get('text', '')}" for r in recalled
+        )
     user = (
         f"GOAL: {goal}\n"
         f"CONSTRAINTS: {json.dumps(constraints) if constraints else 'none'}\n\n"
         f"EXPERIMENT HISTORY (oldest first):\n{_format_history(history)}\n\n"
         f"LATEST ANALYSIS:\n{latest_block or '(none)'}"
+        f"{recall_block}"
     )
 
     client = _get_client()

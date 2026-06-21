@@ -130,7 +130,7 @@ def test_explore_loop_with_fakes():
 
     calls = {"n": 0}
 
-    def fake_propose(history, goal, constraints):
+    def fake_propose(history, goal, constraints, recalled=None):
         from backend.models import OrchestratorDecision
         calls["n"] += 1
         if calls["n"] == 1:
@@ -151,6 +151,38 @@ def test_explore_loop_with_fakes():
     assert final["best_exp_id"] == "e30"          # 30 clusters → highest IPC
     assert set(final["pareto"]) == {"e15", "e30"}  # both on the frontier
     assert final["iterations"] == 2
+
+
+def test_explore_loop_uses_memory():
+    from backend.agent_memory import InMemoryAgentMemory
+
+    def fake_run(config, benchmark=None, container=None, store=None):
+        return Experiment(
+            exp_id=f"e{config.n_clusters}", config=config,
+            stats=SimStats(ipc=300.0 + config.n_clusters), benchmark="dct8x8",
+            container_id="x", timestamp=0.0, status="success")
+
+    def fake_analyze(stats, config, benchmark):
+        return {a: AgentOutput(agent=a, text=f"{a} note", status="amber")
+                for a in ("memory", "warp", "bottleneck")}
+
+    seen_recalled = {"val": "unset"}
+
+    def fake_propose(history, goal, constraints, recalled=None):
+        from backend.models import OrchestratorDecision
+        seen_recalled["val"] = recalled  # capture what memory fed the orchestrator
+        return OrchestratorDecision(reasoning="done", next_config=None, converged=True)
+
+    mem = InMemoryAgentMemory()
+    events = list(explore(
+        "maximize ipc", start_config=GPUConfig(n_clusters=15), max_iterations=1,
+        memory=mem, run_fn=fake_run, analyze_fn=fake_analyze, propose_fn=fake_propose,
+    ))
+    types = [e["type"] for e in events]
+    assert "recall" in types, "no recall event emitted"
+    assert mem.count() == 1, "experiment not stored in memory"
+    assert seen_recalled["val"] is not None, "recalled not passed to orchestrator"
+    assert seen_recalled["val"][0]["exp_id"] == "e15"
 
 
 # --- live orchestrator (1 Sonnet call, gated) ----------------------------
@@ -188,7 +220,8 @@ def test_orchestrator_live():
 if __name__ == "__main__":
     for fn in [test_parse_decision_proposes, test_parse_decision_markdown_format,
                test_parse_decision_converged,
-               test_compute_pareto, test_explore_loop_with_fakes]:
+               test_compute_pareto, test_explore_loop_with_fakes,
+               test_explore_loop_uses_memory]:
         fn()
         print(f"PASS: {fn.__name__}")
     test_orchestrator_live()
