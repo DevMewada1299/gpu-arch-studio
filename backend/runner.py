@@ -45,7 +45,10 @@ def _load_demo_output() -> str:
 
 def _demo_ipc(config: GPUConfig, base: float) -> float:
     """Make replayed IPC respond to the config so exploration looks real."""
-    ipc = base * (config.n_clusters / 15.0)
+    # Sub-linear cluster scaling — real GPUs see diminishing returns from more
+    # SMs (memory/scheduling become the limiter), so 60 clusters lands ~670, not
+    # an impossible 1260. Exponent 0.55 keeps the curve realistic for the demo.
+    ipc = base * (config.n_clusters / 15.0) ** 0.55
     if config.l1_sets >= 64:
         ipc *= 1.03
     if config.scheduler == "two_level_active":

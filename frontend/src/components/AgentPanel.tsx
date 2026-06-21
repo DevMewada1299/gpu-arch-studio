@@ -26,6 +26,12 @@ function cleanText(t: string): string {
   return t
     .replace(/\s*STATUS:\s*\w+.*$/is, "")
     .replace(/\[demo\]/gi, "")
+    // strip Markdown so cards render clean prose (agents emit ## and **)
+    .replace(/^\s{0,3}#{1,6}\s*/gm, "")   // headers -> plain line
+    .replace(/\*\*/g, "")                  // bold markers
+    .replace(/`/g, "")                     // inline code ticks
+    .replace(/^\s*[-*]\s+/gm, "• ")        // bullets -> •
+    .replace(/\n{3,}/g, "\n\n")            // collapse blank runs
     .trim();
 }
 
