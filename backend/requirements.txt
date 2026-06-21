@@ -17,5 +17,7 @@ sentence-transformers>=2.2
 # Optional / sponsor integrations (safe to install; code degrades without config)
 sentry-sdk[fastapi]>=2.0
 
-# Added later:
-#   uagents        # Fetch.ai wrapper
+# Fetch.ai uAgent wrapper (backend/fetch_agents.py). Runs as a SEPARATE process
+# and talks to the backend over HTTP, so its pinned deps (older pydantic) don't
+# affect the backend. Ideally install in a dedicated venv.
+#   pip install uagents
