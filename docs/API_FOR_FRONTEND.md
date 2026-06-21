@@ -176,3 +176,82 @@ for the deep-dive.
 
 ## Notes
 - All `SimStats` rates are fractions (0-1) — multiply by 100 for `%` display.
+
+---
+
+# Integration Notes & Gotchas (read before building)
+
+Practical guidance so the UI fits the real backend. If you're using an AI
+assistant to build the frontend, point it at this section.
+
+### 1. Use the REAL field names + value ranges (most common mistake)
+- `GPUConfig` is the 8 fields above (`n_clusters`, `cores_per_cluster`, `n_mem`,
+  `shmem_size`, `scheduler`, `num_sched_per_core`, `l1_sets`, `l2_sets`).
+  There is **no** `l1_size_kb`/`l2_size_mb`/`shmem_kb`, and scheduler is
+  `gto|lrr|two_level_active` (**not** `rrws`).
+- **Scale charts for real magnitudes:** `ipc` is in the **hundreds (~300–490)**,
+  `occupancy` ~**0.30**, hit rates ~**0.4–0.7**. (Don't design around the old
+  placeholder IPC of 1.4 — everything will look wrong.)
+- All rates are fractions 0–1 → `×100` for `%`.
+
+### 2. Config controls are discrete, not continuous
+Sliders/segmented controls must snap to the allowed values only:
+`n_clusters` 8/15/30/60 · `cores_per_cluster` 1/2/4 · `n_mem` 4/6/8/12 ·
+`shmem_size` 16384/32768/49152 · `num_sched_per_core` 1/2/4 ·
+`l1_sets` 16/32/64/128 · `l2_sets` 32/64/128 · `scheduler` gto/lrr/two_level_active.
+Benchmark is **`dct8x8`** only.
+
+### 3. Two separate flows — build both
+- **Manual run:** ConfigPanel → `POST /experiments/run` → open
+  `EventSource('/experiments/{exp_id}/stream')` → render output + final stats.
+- **Autonomous exploration (headline):** goal text → `POST /explore` →
+  `EventSource('/explore/{session_id}/stream')` → drive the agent panel.
+
+### 4. Consuming SSE
+Use `EventSource`. Each message is a line `data: <json>`. Parse the JSON, switch
+on `.type`. The stream stays open until `complete` (runs) / `converged`
+(explore); buffered, so a late subscriber still gets all prior events. Handle
+`error` and `note` event types too.
+
+### 5. Agent reasoning is a COMPLETE block per event — animate client-side
+The `analysis` event delivers each agent's full `text` at once (not token by
+token). For a typewriter effect, **animate it on the client** — don't expect a
+per-token stream. Color each agent card by `agents.<name>.status`
+(`green|amber|red`).
+
+### 6. Don't miss the `recall` event
+Between `analysis` and `proposal` you may get
+`{ type:"recall", recalled:[{exp_id,text,score}] }` — the orchestrator's
+RedisVL semantic memory of similar past experiments. Nice UI moment:
+"recalled N relevant prior runs."
+
+### 7. `converged` is the finale
+`{ type:"converged", best_exp_id, pareto:[exp_id...], iterations }` — highlight
+`best_exp_id` and mark the `pareto` exp_ids on the IPC chart (Pareto frontier).
+
+### 8. Two data tiers — don't over-fetch
+History/table → light `SimStats` only. Fetch the heavy `SimReport`
+(`/experiments/{id}/details`) **only** when opening one experiment's deep-dive
+(the Nsight-style view). Mock it with `docs/sample_report.json`.
+
+### 9. Timing / loading states
+One simulation ≈ 8–20s; a full `/explore` ≈ minutes (several real sims). Design
+explicit streaming/loading states. For the live demo, coordinate on a
+pre-run/replay ("demo mode") so judges aren't waiting minutes.
+
+### 10. Experiments can fail
+`Experiment.status` is `"success"|"error"` (a config can fail the simulator).
+Render error runs gracefully (e.g., greyed row + the `error` string).
+
+### 11. CORS
+Backend allows `http://localhost:3000` and `127.0.0.1:3000`. On a different
+port, ask backend to add it.
+
+### Build checklist
+- [ ] ConfigPanel emits a valid `GPUConfig` (discrete values, real scheduler enum)
+- [ ] Dashboard scales to real IPC/occupancy ranges; rates ×100 for %
+- [ ] Manual run via `/experiments/run` + `/stream`
+- [ ] Agent panel via `/explore` + `/stream`; cards colored by status; client-side typewriter
+- [ ] `recall`, `converged` (best + pareto), `error`/`note` handled
+- [ ] Deep-dive via `/experiments/{id}/details` (mock from sample_report.json)
+- [ ] Loading/streaming states for multi-second/minute operations
