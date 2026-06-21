@@ -6,10 +6,12 @@ redis>=5.0
 hiredis>=2.0
 python-dotenv>=1.0
 
+# Agents
+anthropic>=0.40
+
 # Optional / sponsor integrations (safe to install; code degrades without config)
 sentry-sdk[fastapi]>=2.0
 
 # Added later:
 #   redisvl        # RedisVL agent memory (beyond-caching Redis use)
-#   anthropic      # agent_engine (Claude agents)
 #   uagents        # Fetch.ai wrapper

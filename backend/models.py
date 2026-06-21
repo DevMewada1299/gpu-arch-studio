@@ -121,6 +121,17 @@ class SimReport:
 
 
 @dataclass
+class AgentOutput:
+    """One agent's analysis of an experiment (streamed to the UI)."""
+    agent: str                      # "memory" | "warp" | "bottleneck" | "orchestrator"
+    text: str = ""
+    status: str = "amber"           # "green" | "amber" | "red"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
 class Experiment:
     exp_id: str
     config: GPUConfig
