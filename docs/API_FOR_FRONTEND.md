@@ -12,7 +12,8 @@
   Nsight-style deep-dive view — per-SM heatmap, traffic flow, warp/stall
   breakdowns, latency histograms, DRAM bottlenecks.
 - **Benchmark is `dct8x8`** (JPEG), not GEMM/vectoradd.
-- **`POST /explore` returns 501 for now** (agent core is being built).
+- **`POST /explore` is LIVE** — the autonomous loop (agents + orchestrator)
+  streams over SSE. See the Autonomous Exploration section below.
 
 ---
 
@@ -68,7 +69,8 @@ interface Experiment {
 | `GET /experiments/history` | — | `Experiment[]` (light, no SimReport) |
 | `GET /experiments/{id}` | — | `Experiment` |
 | `GET /experiments/{id}/details` | — | `SimReport` (rich, see below) |
-| `POST /explore` | (later) | **501 for now** |
+| `POST /explore` | `{ goal, benchmark?, constraints?, max_iterations?, start_config?, container_id? }` | `{ session_id }` |
+| `GET /explore/{session_id}/stream` | — (SSE) | autonomous-loop event stream, see below |
 
 ### Run flow
 1. `POST /experiments/run` → get `exp_id`.
@@ -145,7 +147,32 @@ uvicorn backend.main:app --reload --port 8000
 }
 ```
 
+## Autonomous Exploration (the agent panel)
+
+`POST /explore` starts the autonomous loop and returns `{ session_id }`. Open
+`EventSource("/explore/{session_id}/stream")` and render these `data:` events
+(each is one JSON object with a `type`):
+
+```ts
+// one iteration of: propose -> run sim -> agents analyze -> orchestrator proposes
+{ type: "iteration_start", iteration: number, config: GPUConfig }
+{ type: "experiment", iteration, exp_id, status, config: GPUConfig, stats: SimStats, error }
+{ type: "analysis", iteration, agents: {
+    memory:    { agent, text, status: "green"|"amber"|"red" },
+    warp:      { agent, text, status },
+    bottleneck:{ agent, text, status }      // status drives the card color
+  } }
+{ type: "proposal", iteration, reasoning: string, next_config: GPUConfig|null,
+  converged: boolean, best_exp_id, best_reason }
+{ type: "converged", best_exp_id, pareto: string[], iterations: number }  // final
+{ type: "note" | "error", message }
+```
+
+UI mapping: stream each agent's `text` into its card (typewriter), color by
+`status`; show the orchestrator's `reasoning` + proposed `next_config`; plot IPC
+per `experiment`; highlight `pareto` exp_ids and `best_exp_id` at the end. Each
+`experiment.exp_id` also has a full `SimReport` at `/experiments/{id}/details`
+for the deep-dive.
+
 ## Notes
-- `/explore` + its SSE (agent reasoning stream) are coming with the agent core;
-  shapes will be added here when ready.
 - All `SimStats` rates are fractions (0-1) — multiply by 100 for `%` display.
