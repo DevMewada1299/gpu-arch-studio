@@ -104,7 +104,7 @@ compute hit_rate = 1 - miss_rate.
 | `L1D_total_cache_miss_rate` | L1 data MISS rate (hit = 1-this) | 0.6151 |
 | `L2_total_cache_miss_rate` | L2 MISS rate (hit = 1-this) | 0.4937 |
 | `L1I_total_cache_miss_rate` | L1 instruction miss rate | 0.0302 |
-| `L2_BW` | L2 bandwidth GB/Sec | 54.0853 |
+| `L2_BW_total` | L2 bandwidth GB/Sec (aggregate; NOT per-partition `L2_BW`) | 82.2801 |
 | `gpgpu_n_stall_shd_mem` | shared mem stalls | 160 |
 | `gpgpu_simulation_time` | wall-clock | 8 sec |
 
@@ -233,7 +233,9 @@ takes minutes — judges won't wait. Build a `DEMO_MODE` flag:
 
 - [x] GPGPU-Sim runs in Docker on Mac
 - [x] docker_manager can exec a sim from Python
-- [ ] stats_parser extracts real fields from output
+- [x] config_generator templates configs (+ matching interconnect)
+- [x] stats_parser extracts real fields from output
+- [x] runner: GPUConfig -> run -> parsed Experiment (stored, Sentry on failure)
 - [ ] FastAPI /experiments/run works end to end
 - [ ] Frontend config panel sends runs
 - [ ] SSE streaming live output to UI

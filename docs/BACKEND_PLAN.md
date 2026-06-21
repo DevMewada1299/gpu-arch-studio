@@ -102,7 +102,22 @@ template only the params you're changing. Don't write a config from scratch.
 **Test:** generate a config with default params, diff it against your known
 working config — only the intended fields should differ.
 
-### Step 3 — Run a simulation end to end (2 hrs)
+### Step 3 — Run a simulation end to end (2 hrs) — DONE
+
+Built in `backend/runner.py` (runner kept SEPARATE from docker_manager for
+clean layering — docker_manager stays Docker-primitives-only):
+- `run_experiment(config, benchmark, container, store)` → `Experiment`
+- generates config + matching interconnect, ships BOTH into the container via
+  `docker_manager.put_files()` (put_archive — no shared volume), runs with the
+  env preamble, parses stats, archives configs+output to `experiments/{id}/`.
+- A sim failure is a RESULT (`status="error"`), never a crash; reported to
+  Sentry via `monitoring`. Persistence via an injected `ExperimentStore`
+  (in-memory now; Redis drop-in later).
+- Supporting modules: `models.py` (GPUConfig/SimStats/Experiment dataclasses,
+  the shared seam), `store.py`, `monitoring.py` (optional Sentry).
+- Tested end to end in `tests/runner/` (baseline + 30-cluster auto-interconnect).
+
+Original notes:
 
 Write the runner in `docker_manager.py`:
 - ⚠️ See Reality Note 2/3: there is NO shared volume. Write the config INTO
@@ -120,7 +135,18 @@ output you get when you run it manually? This is the make-or-break test.
 mode" that finishes in ~30s instead of minutes. Verify it still produces
 meaningful (not necessarily converged) stats.
 
-### Step 4 — Parse the stats (1.5 hrs)
+### Step 4 — Parse the stats (1.5 hrs) — DONE
+
+Built in `backend/stats_parser.py` — `parse_stats(output) -> SimStats`.
+Written against REAL output (`sample/out.txt`). Realities handled:
+- takes the LAST occurrence of each field (stats are dumped multiple times)
+- hit_rate = 1 - miss_rate; occupancy % -> fraction
+- uses `L2_BW_total` (aggregate), not the per-partition `L2_BW`
+- parses `gpgpu_simulation_time` human string -> seconds
+- missing fields -> None (no crash)
+9 unit tests in `tests/stats_parser/`, all passing.
+
+Original notes:
 
 Write `stats_parser.py`:
 - `parse_stats(output: str) -> dict` — regex out the fields in CLAUDE.md

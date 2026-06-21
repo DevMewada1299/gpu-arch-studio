@@ -27,10 +27,14 @@ tests/
     test_run_benchmark.py      # end-to-end JPEG sim run (the make-or-break test)
   config_generator/            # pure unit tests, no Docker needed
     test_generate_config.py    # templating, cache SETS, interconnect sizing
+  stats_parser/                # pure unit tests, no Docker needed
+    test_parse_stats.py        # parses real sample/out.txt, all fields
+  runner/                      # end-to-end, needs venv + container (~30-60s)
+    test_run_experiment.py     # GPUConfig -> real sim -> stored Experiment
 ```
 
-`config_generator` tests are pure Python and run with any interpreter.
-`docker_manager` tests need the venv (docker SDK) and a running container.
+Pure (any interpreter): `config_generator`, `stats_parser`.
+Need the venv (docker SDK) + a running container: `docker_manager`, `runner`.
 
-As new backend modules land (`stats_parser`, `experiment_manager`), add a
+As new backend modules land (`experiment_manager`, `redis_store`), add a
 matching subfolder here.

@@ -14,8 +14,11 @@ Without this, the benchmark fails with "libcudart.so.4: cannot open shared
 object file".
 """
 
+import io
 import os
-from typing import Iterator, List, Optional, Tuple, Union
+import tarfile
+import time
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import docker
 from docker.models.containers import Container
@@ -140,6 +143,29 @@ def stream_in_container(
             yield line.decode("utf-8", errors="replace")
     if buf:
         yield buf.decode("utf-8", errors="replace")
+
+
+def put_files(container: ContainerRef, dest_dir: str, files: Dict[str, str]) -> None:
+    """Write text files INTO the container at dest_dir.
+
+    Needed because there is no shared volume (Reality Note 2): we ship the
+    generated gpgpusim.config + interconnect file straight into the benchmark
+    directory. `files` maps filename -> contents.
+    """
+    c = _resolve_container(container)
+
+    tar_stream = io.BytesIO()
+    with tarfile.open(fileobj=tar_stream, mode="w") as tar:
+        for name, content in files.items():
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=name)
+            info.size = len(data)
+            info.mtime = int(time.time())
+            tar.addfile(info, io.BytesIO(data))
+    tar_stream.seek(0)
+
+    if not c.put_archive(dest_dir, tar_stream.getvalue()):
+        raise RuntimeError(f"put_archive failed writing into {dest_dir}")
 
 
 def _build_cmd(cmd: str, with_env: bool, workdir: Optional[str]) -> str:
