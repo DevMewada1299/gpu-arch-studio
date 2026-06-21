@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Sparkles } from "lucide-react";
 import AgentCard from "./AgentCard";
 import { startMockExplore, type ExploreEvent } from "../lib/exploreStream";
 import type { AgentType, AgentStatus, AgentVerdict, GPUConfig } from "../types";
@@ -74,32 +75,61 @@ export default function AgentPanel({ runId, onProposal }: AgentPanelProps) {
   }, [runId, onProposal]);
 
   return (
-    <div className="space-y-2">
-      {runId === 0 && (
-        <p className="text-[11px] text-slate-600 mb-2 leading-relaxed">
-          Four agents analyze each simulation and converge on a Pareto-optimal
-          design. Click <span className="text-cyan-400">Explore</span> to start
-          an autonomous pass.
-        </p>
-      )}
+    <section>
+      {/* Section header */}
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h2 className="text-lg font-semibold text-neutral-900 tracking-tight">
+            Exploration Agents
+          </h2>
+          <p className="text-[13px] text-neutral-500 mt-0.5">
+            Four specialists analyze each run and converge on a Pareto-optimal design.
+          </p>
+        </div>
+        {running ? (
+          <span className="inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-[12px] font-medium text-indigo-600">
+            <span className="flex items-center gap-0.5">
+              <span className="thinking-dot w-1 h-1 rounded-full bg-indigo-500" style={{ animationDelay: "0ms" }} />
+              <span className="thinking-dot w-1 h-1 rounded-full bg-indigo-500" style={{ animationDelay: "160ms" }} />
+              <span className="thinking-dot w-1 h-1 rounded-full bg-indigo-500" style={{ animationDelay: "320ms" }} />
+            </span>
+            Exploring
+          </span>
+        ) : runId !== 0 ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[12px] font-medium text-emerald-600">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            Complete
+          </span>
+        ) : null}
+      </div>
 
-      {running && (
-        <div className="flex items-center gap-2 mb-1 text-[10px] font-mono text-cyan-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-          exploration in progress…
+      {/* Idle empty-state hint */}
+      {runId === 0 && (
+        <div className="mb-5 rounded-2xl border border-dashed border-neutral-200 bg-white/60 px-5 py-6 text-center">
+          <div className="mx-auto w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500 mb-3">
+            <Sparkles size={20} />
+          </div>
+          <p className="text-[14px] text-neutral-600 leading-relaxed max-w-md mx-auto">
+            Press <span className="font-medium text-indigo-600">Explore</span> to start
+            an autonomous design pass. The agents will reason through each result
+            and propose the next configuration to try.
+          </p>
         </div>
       )}
 
-      {AGENT_ORDER.map((agent) => (
-        <AgentCard
-          key={agent}
-          agent={agent}
-          content={agents[agent].content}
-          status={agents[agent].status}
-          verdict={agents[agent].verdict}
-          proposal={agent === "orchestrator" ? proposal : undefined}
-        />
-      ))}
-    </div>
+      {/* Agent stream */}
+      <div className="space-y-4">
+        {AGENT_ORDER.map((agent) => (
+          <AgentCard
+            key={agent}
+            agent={agent}
+            content={agents[agent].content}
+            status={agents[agent].status}
+            verdict={agents[agent].verdict}
+            proposal={agent === "orchestrator" ? proposal : undefined}
+          />
+        ))}
+      </div>
+    </section>
   );
 }

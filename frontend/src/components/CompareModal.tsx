@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import {
   BarChart,
   Bar,
@@ -8,6 +9,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { X, Sparkles } from "lucide-react";
 import type { Experiment, GPUConfig } from "../types";
 
 interface CompareModalProps {
@@ -72,28 +74,26 @@ function explainDelta(a: Experiment, b: Experiment): string {
 function IpcHeadline({ exp, label, isWinner }: { exp: Experiment; label: string; isWinner: boolean }) {
   return (
     <div
-      className={`flex-1 rounded-lg border p-4 ${
-        isWinner
-          ? "border-cyan-500/40 bg-cyan-500/[0.06]"
-          : "border-white/[0.08] bg-white/[0.02]"
+      className={`flex-1 rounded-2xl border p-5 transition-colors ${
+        isWinner ? "border-indigo-200 bg-indigo-50/50" : "border-neutral-200 bg-white"
       }`}
     >
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-mono text-slate-400">{label}</span>
-        <span className="text-[10px] font-mono text-slate-600">{exp.exp_id}</span>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[12px] font-medium text-neutral-500">{label}</span>
+        <span className="text-[11px] text-neutral-400">{exp.exp_id}</span>
       </div>
       <div className="flex items-baseline gap-2">
         <span
-          className={`text-4xl font-mono font-bold tracking-tight ${
-            isWinner ? "text-cyan-300" : "text-slate-300"
+          className={`text-3xl font-semibold font-metric tracking-tight ${
+            isWinner ? "text-indigo-600" : "text-neutral-800"
           }`}
         >
           {exp.stats.ipc.toFixed(2)}
         </span>
-        <span className="text-[10px] font-mono text-slate-600">IPC</span>
+        <span className="text-[11px] text-neutral-400">IPC</span>
         {isWinner && (
-          <span className="ml-auto text-[10px] font-mono text-cyan-400 px-1.5 py-0.5 rounded bg-cyan-500/10">
-            ★ best
+          <span className="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-600">
+            Best
           </span>
         )}
       </div>
@@ -113,43 +113,44 @@ export default function CompareModal({ a, b, onClose }: CompareModalProps) {
   const rowsA = configRows(a.config);
   const rowsB = configRows(b.config);
 
-  return (
+  // Portal to <body> so the overlay centers on the viewport even when an
+  // ancestor (e.g. the History drawer) uses a transform for its animation.
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/30 backdrop-blur-sm p-6 animate-backdrop-in"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-4xl max-h-[88vh] overflow-y-auto rounded-xl border border-white/[0.08] bg-[#0B1020] shadow-2xl"
+        className="w-full max-w-3xl max-h-[88vh] overflow-y-auto rounded-3xl border border-neutral-200 bg-white shadow-2xl shadow-black/10 animate-fade-in-up"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-white/[0.06] bg-[#0B1020]">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-neutral-100 bg-white/90 backdrop-blur">
           <div>
-            <h2 className="text-sm font-mono font-semibold text-slate-200">
+            <h2 className="text-[15px] font-semibold text-neutral-900">
               Experiment Comparison
             </h2>
-            <p className="text-[11px] font-mono text-slate-500 mt-0.5">
-              {a.exp_id} <span className="text-slate-600">vs</span> {b.exp_id} ·{" "}
-              {a.benchmark}
+            <p className="text-[12px] text-neutral-400 mt-0.5">
+              {a.exp_id} vs {b.exp_id} · {a.benchmark}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-200 hover:bg-white/[0.06] transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
           >
-            ✕
+            <X size={16} />
           </button>
         </div>
 
         <div className="p-6 space-y-5">
           {/* IPC headlines */}
-          <div className="flex gap-3">
+          <div className="flex items-stretch gap-3">
             <IpcHeadline exp={a} label="Experiment A" isWinner={aWins} />
             <div className="flex flex-col items-center justify-center px-2">
-              <span className="text-[10px] font-mono text-slate-600">Δ IPC</span>
+              <span className="text-[10px] uppercase tracking-wide text-neutral-400">Δ IPC</span>
               <span
-                className={`text-lg font-mono font-bold ${
-                  b.stats.ipc - a.stats.ipc >= 0 ? "text-green-400" : "text-red-400"
+                className={`text-lg font-semibold font-metric ${
+                  b.stats.ipc - a.stats.ipc >= 0 ? "text-emerald-600" : "text-rose-500"
                 }`}
               >
                 {b.stats.ipc - a.stats.ipc >= 0 ? "+" : ""}
@@ -160,47 +161,45 @@ export default function CompareModal({ a, b, onClose }: CompareModalProps) {
           </div>
 
           {/* Grouped bar chart */}
-          <div className="rounded-lg border border-white/[0.05] bg-white/[0.02] p-4">
-            <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-3">
-              Key Metrics (%)
-            </p>
+          <div className="rounded-2xl border border-neutral-200/80 bg-white p-5">
+            <p className="text-[12px] font-semibold text-neutral-700 mb-3">Key Metrics (%)</p>
             <div className="h-[200px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -18 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                   <XAxis
                     dataKey="metric"
-                    tick={{ fill: "#94a3b8", fontSize: 11, fontFamily: "monospace" }}
-                    axisLine={{ stroke: "rgba(255,255,255,0.06)" }}
+                    tick={{ fill: "#737373", fontSize: 12 }}
+                    axisLine={{ stroke: "#e5e5e5" }}
                     tickLine={false}
                   />
                   <YAxis
                     domain={[0, 100]}
-                    tick={{ fill: "#64748b", fontSize: 10, fontFamily: "monospace" }}
+                    tick={{ fill: "#a3a3a3", fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
                   />
                   <Tooltip
-                    cursor={{ fill: "rgba(255,255,255,0.03)" }}
+                    cursor={{ fill: "rgba(0,0,0,0.03)" }}
                     contentStyle={{
-                      background: "#0B1020",
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      borderRadius: 6,
-                      fontSize: 11,
-                      fontFamily: "monospace",
+                      background: "#ffffff",
+                      border: "1px solid #e5e5e5",
+                      borderRadius: 12,
+                      fontSize: 12,
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
                     }}
                   />
-                  <Legend wrapperStyle={{ fontSize: 11, fontFamily: "monospace" }} />
-                  <Bar dataKey={a.exp_id} fill="#64748b" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey={b.exp_id} fill="#22d3ee" radius={[3, 3, 0, 0]} />
+                  <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                  <Bar dataKey={a.exp_id} fill="#d4d4d4" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey={b.exp_id} fill="#6366f1" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </div>
 
           {/* Config diff table */}
-          <div className="rounded-lg border border-white/[0.05] bg-white/[0.02] overflow-hidden">
-            <div className="grid grid-cols-3 px-4 py-2 border-b border-white/[0.05] text-[10px] font-mono text-slate-500 uppercase tracking-widest">
+          <div className="rounded-2xl border border-neutral-200/80 bg-white overflow-hidden">
+            <div className="grid grid-cols-3 px-4 py-2.5 border-b border-neutral-100 text-[11px] font-semibold text-neutral-400 uppercase tracking-wide">
               <span>Parameter</span>
               <span className="text-center">{a.exp_id}</span>
               <span className="text-center">{b.exp_id}</span>
@@ -210,15 +209,15 @@ export default function CompareModal({ a, b, onClose }: CompareModalProps) {
               return (
                 <div
                   key={row.key}
-                  className={`grid grid-cols-3 px-4 py-2 text-[11px] font-mono border-b border-white/[0.02] ${
-                    differs ? "bg-cyan-500/[0.04]" : ""
+                  className={`grid grid-cols-3 px-4 py-2.5 text-[12px] border-b border-neutral-50 last:border-0 ${
+                    differs ? "bg-indigo-50/40" : ""
                   }`}
                 >
-                  <span className="text-slate-500">{row.label}</span>
-                  <span className={`text-center ${differs ? "text-slate-400" : "text-slate-300"}`}>
+                  <span className="text-neutral-500">{row.label}</span>
+                  <span className={`text-center font-metric ${differs ? "text-neutral-500" : "text-neutral-700"}`}>
                     {row.value}
                   </span>
-                  <span className={`text-center ${differs ? "text-cyan-300 font-semibold" : "text-slate-300"}`}>
+                  <span className={`text-center font-metric ${differs ? "text-indigo-600 font-semibold" : "text-neutral-700"}`}>
                     {rowsB[i].value}
                   </span>
                 </div>
@@ -227,18 +226,20 @@ export default function CompareModal({ a, b, onClose }: CompareModalProps) {
           </div>
 
           {/* Agent explanation of the delta */}
-          <div className="rounded-lg border-l-[3px] border-cyan-500/50 border-y border-r border-white/[0.05] bg-cyan-500/[0.03] p-4">
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-widest">
-                ✦ Orchestrator — delta analysis
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-5">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles size={14} className="text-indigo-500" />
+              <span className="text-[12px] font-semibold text-indigo-600">
+                Orchestrator · delta analysis
               </span>
             </div>
-            <p className="text-[12px] leading-relaxed text-slate-300">
+            <p className="text-[13px] leading-relaxed text-neutral-700">
               {explainDelta(a, b)}
             </p>
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

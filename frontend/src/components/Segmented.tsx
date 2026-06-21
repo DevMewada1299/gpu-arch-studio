@@ -12,17 +12,17 @@ export function Segmented<T extends string | number>({
   onChange,
 }: SegmentedProps<T>) {
   return (
-    <div className="flex w-full rounded-md bg-black/30 border border-white/[0.06] p-0.5 gap-0.5">
+    <div className="flex w-full rounded-xl bg-neutral-100 p-1 gap-1">
       {options.map((opt) => {
         const active = opt.value === value;
         return (
           <button
             key={String(opt.value)}
             onClick={() => onChange(opt.value)}
-            className={`flex-1 px-1 py-1 rounded text-[11px] font-mono transition-colors ${
+            className={`flex-1 px-1.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
               active
-                ? "bg-cyan-500/90 text-slate-900 font-semibold shadow-[0_0_8px_rgba(34,211,238,0.3)]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+                ? "bg-white text-neutral-900 shadow-sm ring-1 ring-black/[0.04]"
+                : "text-neutral-500 hover:text-neutral-800"
             }`}
           >
             {opt.label}

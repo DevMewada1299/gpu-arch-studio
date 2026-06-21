@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Check } from "lucide-react";
 import CompareModal from "./CompareModal";
 import type { Experiment, GPUConfig } from "../types";
 import { mockHistory } from "../mocks";
@@ -13,9 +14,22 @@ interface ExperimentHistoryProps {
   experiments?: Experiment[];
 }
 
-const COLS = [
-  "", "Exp", "Clusters", "Cores", "L1", "L2", "Sched", "IPC", "L1 Hit", "L2 Hit", "Occ%", "Status",
-];
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-[10px] uppercase tracking-wide text-neutral-400">{label}</span>
+      <span className="text-[13px] font-metric font-medium text-neutral-800">{value}</span>
+    </div>
+  );
+}
+
+function Chip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-md bg-neutral-100 px-1.5 py-0.5 text-[11px] font-metric text-neutral-500">
+      {children}
+    </span>
+  );
+}
 
 export default function ExperimentHistory({
   experiments = mockHistory,
@@ -39,104 +53,108 @@ export default function ExperimentHistory({
   const canCompare = selectedExps.length === 2;
 
   return (
-    <div className="relative h-full">
-      <table className="w-full text-[11px]">
-        <thead className="sticky top-0 bg-[#090D1A] z-10">
-          <tr className="border-b border-white/[0.05]">
-            {COLS.map((c, i) => (
-              <th
-                key={i}
-                className="px-3 py-1.5 text-left font-mono text-slate-600 uppercase text-[10px] tracking-wider font-normal"
-              >
-                {c}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {experiments.map((exp) => {
-            const isSelected = selected.includes(exp.exp_id);
-            const isRunning = exp.status === "running";
-            return (
-              <tr
-                key={exp.exp_id}
-                onClick={() => toggle(exp)}
-                className={`border-b border-white/[0.02] transition-colors ${
-                  isRunning
-                    ? "opacity-60 cursor-default"
-                    : "cursor-pointer hover:bg-white/[0.03]"
-                } ${isSelected ? "bg-cyan-500/[0.08]" : ""}`}
-              >
-                <td className="px-3 py-2">
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+        {experiments.map((exp) => {
+          const isSelected = selected.includes(exp.exp_id);
+          const isRunning = exp.status === "running";
+          return (
+            <button
+              key={exp.exp_id}
+              onClick={() => toggle(exp)}
+              disabled={isRunning}
+              className={`w-full text-left rounded-2xl border p-4 transition-all duration-200 ${
+                isRunning
+                  ? "border-neutral-200/70 bg-white opacity-60 cursor-default"
+                  : isSelected
+                  ? "border-indigo-300 bg-indigo-50/40 shadow-sm"
+                  : "border-neutral-200/80 bg-white hover:border-neutral-300 hover:shadow-sm"
+              }`}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2.5">
                   <span
-                    className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded border ${
+                    className={`inline-flex items-center justify-center w-4 h-4 rounded-md border flex-none transition-colors ${
                       isSelected
-                        ? "bg-cyan-500 border-cyan-500 text-slate-900"
-                        : "border-white/15"
+                        ? "bg-indigo-600 border-indigo-600 text-white"
+                        : "border-neutral-300"
                     }`}
                   >
-                    {isSelected && <span className="text-[9px] leading-none">✓</span>}
+                    {isSelected && <Check size={11} strokeWidth={3} />}
                   </span>
-                </td>
-                <td className="px-3 py-2 font-mono text-slate-500">{exp.exp_id}</td>
-                <td className="px-3 py-2 font-mono text-slate-400">{exp.config.n_clusters}</td>
-                <td className="px-3 py-2 font-mono text-slate-400">{exp.config.cores_per_cluster}</td>
-                <td className="px-3 py-2 font-mono text-slate-400">{exp.config.l1_sets}</td>
-                <td className="px-3 py-2 font-mono text-slate-400">{exp.config.l2_sets}</td>
-                <td className="px-3 py-2 font-mono text-slate-400">{SCHED_LABEL[exp.config.scheduler]}</td>
-                <td className="px-3 py-2 font-mono font-semibold text-cyan-300">
-                  {isRunning ? "—" : exp.stats.ipc.toFixed(2)}
-                </td>
-                <td className="px-3 py-2 font-mono text-slate-400">
-                  {isRunning ? "—" : `${(exp.stats.l1_hit_rate * 100).toFixed(1)}%`}
-                </td>
-                <td className="px-3 py-2 font-mono text-slate-400">
-                  {isRunning ? "—" : `${(exp.stats.l2_hit_rate * 100).toFixed(1)}%`}
-                </td>
-                <td className="px-3 py-2 font-mono text-slate-400">
-                  {isRunning ? "—" : `${exp.stats.occupancy.toFixed(1)}%`}
-                </td>
-                <td className="px-3 py-2 font-mono">
-                  {isRunning ? (
-                    <span className="flex items-center gap-1.5 text-amber-400">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                      running
-                    </span>
-                  ) : (
-                    <span className="text-green-400">complete</span>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  <span className="text-[13px] font-semibold text-neutral-900">
+                    {exp.exp_id}
+                  </span>
+                </div>
+                {isRunning ? (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-600">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 thinking-dot" />
+                    Running
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-600">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    Complete
+                  </span>
+                )}
+              </div>
 
-      {/* Floating compare action */}
+              {/* Config chips */}
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                <Chip>{exp.config.n_clusters} clusters</Chip>
+                <Chip>L1 {exp.config.l1_sets}</Chip>
+                <Chip>L2 {exp.config.l2_sets}</Chip>
+                <Chip>{SCHED_LABEL[exp.config.scheduler]}</Chip>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-4 gap-2">
+                <Stat label="IPC" value={isRunning ? "—" : exp.stats.ipc.toFixed(1)} />
+                <Stat
+                  label="L1 Hit"
+                  value={isRunning ? "—" : `${(exp.stats.l1_hit_rate * 100).toFixed(0)}%`}
+                />
+                <Stat
+                  label="L2 Hit"
+                  value={isRunning ? "—" : `${(exp.stats.l2_hit_rate * 100).toFixed(0)}%`}
+                />
+                <Stat
+                  label="Occ"
+                  value={isRunning ? "—" : `${exp.stats.occupancy.toFixed(0)}%`}
+                />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Compare action bar */}
       {selectedExps.length > 0 && (
-        <div className="sticky bottom-0 flex items-center justify-end gap-3 px-4 py-2 bg-gradient-to-t from-[#090D1A] via-[#090D1A] to-transparent">
-          <span className="text-[11px] font-mono text-slate-500">
+        <div className="flex-none border-t border-neutral-100 bg-white/90 backdrop-blur px-5 py-3 flex items-center justify-between gap-3">
+          <span className="text-[12px] text-neutral-500 truncate">
             {selectedExps.length === 1
-              ? "select one more to compare"
+              ? "Select one more to compare"
               : `${selectedExps[0].exp_id} vs ${selectedExps[1].exp_id}`}
           </span>
-          <button
-            onClick={() => setSelected([])}
-            className="text-[11px] font-mono text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            clear
-          </button>
-          <button
-            disabled={!canCompare}
-            onClick={() => setComparing(true)}
-            className={`px-3 py-1.5 rounded text-[11px] font-mono font-semibold transition-colors ${
-              canCompare
-                ? "bg-cyan-500 text-slate-900 hover:bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.25)]"
-                : "bg-slate-800 text-slate-600 cursor-not-allowed"
-            }`}
-          >
-            Compare →
-          </button>
+          <div className="flex items-center gap-3 flex-none">
+            <button
+              onClick={() => setSelected([])}
+              className="text-[12px] font-medium text-neutral-400 hover:text-neutral-600 transition-colors"
+            >
+              Clear
+            </button>
+            <button
+              disabled={!canCompare}
+              onClick={() => setComparing(true)}
+              className={`rounded-full px-4 py-1.5 text-[12px] font-semibold transition-colors ${
+                canCompare
+                  ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                  : "bg-neutral-100 text-neutral-400 cursor-not-allowed"
+              }`}
+            >
+              Compare
+            </button>
+          </div>
         </div>
       )}
 

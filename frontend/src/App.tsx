@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Cpu, Play, Sparkles, History, X } from 'lucide-react'
 import './App.css'
 import ConfigPanel from './components/ConfigPanel'
 import PerformanceDashboard from './components/PerformanceDashboard'
@@ -9,28 +10,6 @@ import type { GPUConfig } from './types'
 import type { Benchmark } from './constants'
 import { baselineConfig, mockContainers } from './mocks'
 
-// Step 2 — ConfigPanel wired with state. RUN logs the config (mock, no backend).
-
-const ACCENT = "text-cyan-400"
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.18em] mb-3 select-none">
-      {children}
-    </p>
-  )
-}
-
-function StatusDot({ active = true }: { active?: boolean }) {
-  return (
-    <span
-      className={`inline-block w-1.5 h-1.5 rounded-full ${
-        active ? "bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.7)]" : "bg-slate-600"
-      }`}
-    />
-  )
-}
-
 export default function App() {
   const [config, setConfig] = useState<GPUConfig>(baselineConfig)
   const [benchmark, setBenchmark] = useState<Benchmark>("dct8x8")
@@ -39,6 +18,8 @@ export default function App() {
   const [containers, setContainers] = useState<string[]>(
     mockContainers.filter((c) => c.status === "idle").map((c) => c.id)
   )
+  // Presentational-only: controls the History slide-out drawer.
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // MOCK: no backend yet. Step 2 just logs the emitted GPUConfig.
   const handleRun = () => {
@@ -52,57 +33,61 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[#090D1A] text-slate-100 overflow-hidden">
+    <div className="h-screen flex flex-col bg-neutral-50 text-neutral-900 overflow-hidden">
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <header className="flex-none flex items-center justify-between px-6 h-14 border-b border-white/[0.06] bg-[#0B1020]">
+      <header className="flex-none flex items-center justify-between px-6 h-16 border-b border-neutral-200/80 bg-white/80 backdrop-blur-sm">
         <div className="flex items-center gap-3">
-          <StatusDot />
-          <span className="text-sm font-mono font-medium tracking-wide text-slate-200">
-            GPU Architecture Studio
-          </span>
-          <span className="hidden sm:inline text-xs text-slate-600 font-mono">
-            GTX 480 · Fermi · cc2.0
-          </span>
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white shadow-sm">
+            <Cpu size={17} strokeWidth={2} />
+          </div>
+          <div className="leading-tight">
+            <h1 className="text-[15px] font-semibold tracking-tight text-neutral-900">
+              GPU Architecture Studio
+            </h1>
+            <p className="text-[11px] text-neutral-400">GTX 480 · Fermi · cc 2.0</p>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Container selector */}
           <ContainerSelector selected={containers} onChange={setContainers} />
 
-          {/* Active benchmark (controlled from ConfigPanel) */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-slate-800/40 border border-white/[0.06] text-xs text-slate-400">
-            <span className="text-slate-600">bench</span>
-            <span className="font-mono text-slate-200">{benchmark}</span>
-          </div>
-
-          {/* Explore toggle */}
+          {/* History — opens the drawer */}
           <button
-            onClick={handleExplore}
-            className="flex items-center gap-2 px-3 py-1.5 rounded bg-slate-800/80 border border-white/[0.08] text-xs text-slate-300 hover:border-slate-600 transition-colors"
+            onClick={() => setHistoryOpen(true)}
+            className="flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50 transition-colors"
           >
-            <span className={ACCENT}>✦</span>
-            <span>Explore</span>
+            <History size={14} className="text-neutral-400" />
+            History
           </button>
 
-          {/* Run button */}
+          {/* Run — secondary */}
           <button
             onClick={handleRun}
-            className="flex items-center gap-2 px-5 py-2 rounded bg-cyan-500 hover:bg-cyan-400 text-slate-900 text-sm font-semibold transition-colors shadow-[0_0_16px_rgba(34,211,238,0.25)]"
+            className="flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50 transition-colors"
           >
-            <span>▶</span>
-            <span>RUN</span>
+            <Play size={13} className="text-neutral-500" />
+            Run
+          </button>
+
+          {/* Explore — primary, AI-first */}
+          <button
+            onClick={handleExplore}
+            className="flex items-center gap-2 rounded-full bg-indigo-600 px-4 py-1.5 text-[13px] font-semibold text-white hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-600/20"
+          >
+            <Sparkles size={14} />
+            Explore
           </button>
         </div>
       </header>
 
-      {/* ── Main three-column area ──────────────────────────────────────── */}
+      {/* ── Main ────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex overflow-hidden min-h-0">
 
-        {/* Left — Config Panel */}
-        <aside className="w-[264px] flex-none flex flex-col border-r border-white/[0.06] overflow-y-auto bg-[#090D1A]">
-          <div className="p-4 flex-1">
-            <SectionLabel>Config Panel</SectionLabel>
+        {/* Left rail — Config */}
+        <aside className="w-[320px] flex-none flex flex-col border-r border-neutral-200/80 bg-white overflow-y-auto">
+          <div className="px-5 py-5">
+            <h2 className="text-sm font-semibold text-neutral-900 mb-4">Configuration</h2>
             <ConfigPanel
               config={config}
               onChange={setConfig}
@@ -112,36 +97,47 @@ export default function App() {
           </div>
         </aside>
 
-        {/* Center — Performance Dashboard */}
-        <main className="flex-1 flex flex-col border-r border-white/[0.06] overflow-y-auto bg-[#090D1A]">
-          <div className="p-4 flex-1">
-            <SectionLabel>Performance Dashboard</SectionLabel>
+        {/* Center — Performance + Agents (hero) */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-3xl mx-auto px-8 py-10 space-y-10">
             <PerformanceDashboard />
-          </div>
-        </main>
-
-        {/* Right — Agent Panel */}
-        <aside className="w-[300px] flex-none flex flex-col overflow-y-auto bg-[#090D1A]">
-          <div className="p-4 flex-1">
-            <SectionLabel>Agent Panel</SectionLabel>
             <AgentPanel key={exploreRunId} runId={exploreRunId} onProposal={setConfig} />
           </div>
-        </aside>
+        </main>
       </div>
 
-      {/* ── Bottom — Experiment History ─────────────────────────────────── */}
-      <div className="flex-none h-[220px] border-t border-white/[0.06] flex flex-col bg-[#090D1A]">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-white/[0.04]">
-          <SectionLabel>Experiment History</SectionLabel>
-          <span className="text-[10px] text-slate-600 font-mono">
-            Select two rows to compare
-          </span>
+      {/* ── History drawer ──────────────────────────────────────────────── */}
+      {historyOpen && (
+        <div className="fixed inset-0 z-40">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-neutral-900/20 backdrop-blur-[2px] animate-backdrop-in"
+            onClick={() => setHistoryOpen(false)}
+          />
+          {/* Panel */}
+          <div className="absolute right-0 top-0 h-full w-full max-w-[440px] bg-neutral-50 border-l border-neutral-200 shadow-2xl shadow-black/10 flex flex-col animate-drawer-in">
+            <div className="flex-none flex items-center justify-between px-5 h-16 border-b border-neutral-200 bg-white">
+              <div>
+                <h2 className="text-[15px] font-semibold text-neutral-900">
+                  Experiment History
+                </h2>
+                <p className="text-[12px] text-neutral-400 mt-0.5">
+                  Select two runs to compare
+                </p>
+              </div>
+              <button
+                onClick={() => setHistoryOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0">
+              <ExperimentHistory />
+            </div>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          <ExperimentHistory />
-        </div>
-      </div>
-
+      )}
     </div>
   )
 }
