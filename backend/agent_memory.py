@@ -156,6 +156,9 @@ class RedisVLAgentMemory:
 
 
 def make_agent_memory() -> AgentMemory:
+    if os.environ.get("DISABLE_REDIS") == "1":
+        print("[memory] DISABLE_REDIS=1 -> in-memory vector memory")
+        return InMemoryAgentMemory()
     url = os.environ.get("REDIS_URL")
     if url:
         try:

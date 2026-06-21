@@ -44,6 +44,9 @@ monitoring.init_sentry()  # no-op unless SENTRY_DSN is set
 
 
 def _make_store():
+    if os.environ.get("DISABLE_REDIS") == "1":
+        print("[store] DISABLE_REDIS=1 -> in-memory store")
+        return InMemoryExperimentStore()
     url = os.environ.get("REDIS_URL")
     if url:
         try:
@@ -284,3 +287,40 @@ async def explore_stream(session_id: str):
     if handle is None:
         raise HTTPException(404, f"no exploration {session_id!r}")
     return _sse_response(handle)
+
+
+@app.post("/explore/run")
+async def explore_run(req: ExploreRequest):
+    """Synchronous, bounded exploration that returns a final summary (no SSE).
+
+    Used by the Fetch.ai chat agent: one request in, the best config + reasoning
+    out. Blocks for the exploration (bounded by max_iterations); runs in a thread
+    so the event loop stays free.
+    """
+    if req.benchmark not in BENCHMARKS:
+        raise HTTPException(400, f"unknown benchmark {req.benchmark!r}")
+    params = dict(
+        goal=req.goal, benchmark=req.benchmark, constraints=req.constraints,
+        max_iterations=min(req.max_iterations, 4), container=req.container_id,
+        store=STORE, memory=AGENT_MEMORY,
+        start_config=(GPUConfig.from_dict(req.start_config.model_dump())
+                      if req.start_config else None),
+    )
+    events = await asyncio.to_thread(lambda: list(explore(**params)))
+
+    experiments = [e for e in events if e["type"] == "experiment"]
+    proposals = [e for e in events if e["type"] == "proposal"]
+    final = next((e for e in events if e["type"] == "converged"), {})
+    best_id = final.get("best_exp_id")
+    best = next((e for e in experiments if e["exp_id"] == best_id), None)
+    return {
+        "goal": req.goal,
+        "best_exp_id": best_id,
+        "best_config": best["config"] if best else None,
+        "best_ipc": best["stats"].get("ipc") if best else None,
+        "pareto": final.get("pareto", []),
+        "iterations": final.get("iterations", len(experiments)),
+        "runs": [{"exp_id": e["exp_id"], "ipc": e["stats"].get("ipc"),
+                  "n_clusters": e["config"].get("n_clusters")} for e in experiments],
+        "final_reasoning": proposals[-1]["reasoning"] if proposals else "",
+    }

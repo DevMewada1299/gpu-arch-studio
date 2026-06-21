@@ -30,13 +30,34 @@ def init_sentry(dsn: Optional[str] = None) -> bool:
     dsn = dsn or os.environ.get("SENTRY_DSN")
     if not _HAVE_SDK or not dsn:
         return False
-    sentry_sdk.init(dsn=dsn, traces_sample_rate=0.0)
+    # Performance tracing on by default so sim runs + agent calls show up as
+    # traces in Sentry. Override with SENTRY_TRACES_SAMPLE_RATE (e.g. 0.1 in prod).
+    rate = float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "1.0"))
+    sentry_sdk.init(dsn=dsn, traces_sample_rate=rate)
     _enabled = True
     return True
 
 
 def is_enabled() -> bool:
     return _enabled
+
+
+@contextmanager
+def transaction(name: str, op: str, **tags):
+    """A Sentry performance transaction (no-op if disabled).
+
+    Used to trace sim runs and agent calls — each becomes a timed trace in
+    Sentry Performance, tagged with config params / model so they're filterable.
+    Yields the transaction (or None) so the caller can set data on it.
+    """
+    if not _enabled:
+        yield None
+        return
+    with sentry_sdk.start_transaction(name=name, op=op) as txn:
+        for key, value in tags.items():
+            if value is not None:
+                txn.set_tag(key, value)
+        yield txn
 
 
 def capture_exception(exc: BaseException, **context) -> None:

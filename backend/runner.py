@@ -97,47 +97,75 @@ def run_experiment(
             log_path=log_path,
         )
         if store is not None:
-            store.save(exp)
+            try:
+                store.save(exp)
+            except Exception as exc:  # noqa: BLE001 - persistence is best-effort
+                # A flaky datastore must NOT lose a successful run. Capture and
+                # carry on — the result is still returned/streamed to the user.
+                monitoring.capture_exception(exc, exp_id=exp_id, where="store.save")
         return exp
 
+    # Trace every sim as a Sentry transaction tagged with the config, so runs
+    # are filterable in Performance and failures (e.g. a config that segfaults
+    # GPGPU-Sim) surface as issues WITH the offending config attached.
     exit_code: Optional[int] = None
-    try:
-        container_id = _resolve_target_container(container)
-        files = generate_files(config.to_dict())
-        docker_manager.put_files(container_id, bench["dir"], files)
+    with monitoring.transaction(
+        f"sim:{benchmark}", "sim.run",
+        benchmark=benchmark, n_clusters=config.n_clusters,
+        scheduler=config.scheduler, l1_sets=config.l1_sets, l2_sets=config.l2_sets,
+    ) as txn:
+        try:
+            container_id = _resolve_target_container(container)
+            files = generate_files(config.to_dict())
+            docker_manager.put_files(container_id, bench["dir"], files)
 
-        if on_line is not None:
-            lines = []
-            for line in docker_manager.stream_in_container(
-                container_id, bench["cmd"], workdir=bench["dir"]
-            ):
-                lines.append(line)
-                on_line(line)
-            output = "\n".join(lines)  # exit_code stays None (not available when streaming)
-        else:
-            exit_code, output = docker_manager.exec_in_container(
-                container_id, bench["cmd"], workdir=bench["dir"]
+            if on_line is not None:
+                lines = []
+                for line in docker_manager.stream_in_container(
+                    container_id, bench["cmd"], workdir=bench["dir"]
+                ):
+                    lines.append(line)
+                    on_line(line)
+                output = "\n".join(lines)  # exit_code stays None when streaming
+            else:
+                exit_code, output = docker_manager.exec_in_container(
+                    container_id, bench["cmd"], workdir=bench["dir"]
+                )
+        except Exception as exc:  # infrastructure failure (docker, container, etc.)
+            monitoring.capture_exception(
+                exc, exp_id=exp_id, benchmark=benchmark, config=config.to_dict()
             )
-    except Exception as exc:  # infrastructure failure (docker, container, etc.)
-        monitoring.capture_exception(exc, exp_id=exp_id, benchmark=benchmark)
-        return _build("error", SimStats(), f"{type(exc).__name__}: {exc}", None)
+            if txn:
+                txn.set_tag("result", "infra_error")
+            return _build("error", SimStats(), f"{type(exc).__name__}: {exc}", None)
 
-    stats = parse_stats(output)
-    report = parse_report(output)  # rich tier for the deep-dive view
-    log_path = _archive(exp_id, files, output) if save_artifacts else None
-    if save_artifacts:
-        _archive_report(exp_id, report)
-    if store is not None:
-        store.save_report(exp_id, report)
+        stats = parse_stats(output)
+        report = parse_report(output)  # rich tier for the deep-dive view
+        log_path = _archive(exp_id, files, output) if save_artifacts else None
+        if save_artifacts:
+            _archive_report(exp_id, report)
+        if store is not None:
+            try:
+                store.save_report(exp_id, report)
+            except Exception as exc:  # noqa: BLE001 - best-effort
+                monitoring.capture_exception(exc, exp_id=exp_id, where="store.save_report")
 
-    if is_success(output) and (exit_code is None or exit_code == 0):
-        return _build("success", stats, None, log_path)
+        if is_success(output) and (exit_code is None or exit_code == 0):
+            if txn:
+                txn.set_tag("result", "success")
+                txn.set_data("ipc", stats.ipc)
+            return _build("success", stats, None, log_path)
 
-    error = f"simulation did not report SUCCESS (exit {exit_code})"
-    monitoring.capture_message(
-        error, level="error", exp_id=exp_id, benchmark=benchmark, exit_code=exit_code
-    )
-    return _build("error", stats, error, log_path)
+        # Simulation failure (e.g. segfault from an invalid config) — the
+        # reliability story: report it to Sentry with the full config.
+        error = f"simulation did not report SUCCESS (exit {exit_code})"
+        if txn:
+            txn.set_tag("result", "sim_error")
+        monitoring.capture_message(
+            error, level="error", exp_id=exp_id, benchmark=benchmark,
+            exit_code=exit_code, config=config.to_dict(),
+        )
+        return _build("error", stats, error, log_path)
 
 
 def _archive(exp_id: str, files: dict, output: str) -> str:
