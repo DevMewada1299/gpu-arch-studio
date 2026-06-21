@@ -1,9 +1,8 @@
-// Typed client for the GPU Architecture Studio backend.
-//
-// This is the integration seam to docs/API_FOR_FRONTEND.md. It is fully typed
-// and ready to use; live wiring of the UI to these calls is a later step (the
-// app currently renders from mocks). Base URL is configurable via VITE_API_URL
-// and defaults to the backend's documented address.
+// Typed client for the GPU Architecture Studio backend — the live integration
+// seam to docs/API_FOR_FRONTEND.md. The UI is wired to these calls (manual run,
+// autonomous explore, history, deep-dive details), with mock fallback when the
+// backend is unreachable. Base URL is configurable via VITE_API_URL and
+// defaults to the backend's documented address (http://localhost:8000).
 
 import type {
   Container,
@@ -11,6 +10,7 @@ import type {
   GPUConfig,
   SimReport,
   RunStreamEvent,
+  ExploreStreamEvent,
 } from "../types";
 
 const BASE_URL =
@@ -49,6 +49,15 @@ export interface HealthResponse {
 export interface RunRequest {
   config: GPUConfig;
   benchmark: string;
+  container_id?: string;
+}
+
+export interface ExploreRequest {
+  goal: string;
+  benchmark?: string;
+  constraints?: Record<string, unknown>;
+  max_iterations?: number;
+  start_config?: GPUConfig;
   container_id?: string;
 }
 
@@ -99,11 +108,42 @@ export const api = {
     return { cancel: close };
   },
 
+  /** Start an autonomous exploration session. Returns { session_id }. */
+  explore: (body: ExploreRequest) =>
+    postJson<{ session_id: string }>("/explore", body),
+
   /**
-   * Autonomous exploration. Returns 501 until the agent core lands — callers
-   * should handle ApiError(501) and fall back to the local mock stream.
+   * Subscribe to an exploration session's SSE stream. Events:
+   * iteration_start · experiment · analysis · recall · proposal · converged ·
+   * note · error. Auto-closes on `converged` or connection end (prevents the
+   * EventSource auto-reconnect from replaying a finished session).
    */
-  explore: (body: unknown) => postJson<{ session_id: string }>("/explore", body),
+  streamExplore(
+    sessionId: string,
+    onEvent: (e: ExploreStreamEvent) => void,
+    onClose?: () => void
+  ): StreamHandle {
+    const es = new EventSource(`${BASE_URL}/explore/${sessionId}/stream`);
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      es.close();
+      onClose?.();
+    };
+    es.onmessage = (ev) => {
+      let parsed: ExploreStreamEvent;
+      try {
+        parsed = JSON.parse(ev.data) as ExploreStreamEvent;
+      } catch {
+        return;
+      }
+      onEvent(parsed);
+      if (parsed.type === "converged") close();
+    };
+    es.onerror = () => close();
+    return { cancel: close };
+  },
 };
 
 export { BASE_URL };
