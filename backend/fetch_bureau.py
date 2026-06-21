@@ -22,6 +22,7 @@ Each agent prints an Agentverse inspector URL — claim each via Connect → Mai
 Keep the backend running (these call it over HTTP).
 """
 
+import asyncio
 import os
 from datetime import datetime
 from uuid import uuid4
@@ -39,19 +40,40 @@ from uagents_core.contrib.protocols.chat import (
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 SPECIALISTS = ("memory", "warp", "bottleneck")
 
-# A representative baseline DCT8x8 result for the specialists to analyze. (The
-# point of this surface is to showcase the agent-to-agent collaboration; the
-# full real exploration lives in fetch_agents.py.)
+# Port for the Bureau's own server (must NOT collide with the backend on 8000).
+BUREAU_PORT = int(os.environ.get("FETCH_BUREAU_PORT", "8200"))
+# Mailbox connects agents to Agentverse. Set FETCH_MAILBOX=0 to run fully local
+# (e.g. the local mesh test) — intra-bureau messaging works without a mailbox.
+MAILBOX = os.environ.get("FETCH_MAILBOX", "1") == "1"
+
+# The config the coordinator runs for real before delegating analysis. The
+# STATS are NOT hardcoded — they come from an actual backend run (a real
+# GPGPU-Sim simulation in normal mode, or a replay in DEMO_MODE).
 BASELINE_CONFIG = {
     "n_clusters": 15, "cores_per_cluster": 1, "n_mem": 6, "shmem_size": 49152,
     "scheduler": "gto", "num_sched_per_core": 2, "l1_sets": 32, "l2_sets": 64,
 }
-BASELINE_STATS = {
-    "ipc": 315.2309, "total_insn": 18710528, "total_cycles": 59355,
-    "occupancy": 0.3241, "l1_hit_rate": 0.4583, "l2_hit_rate": 0.699,
-    "l1i_hit_rate": 0.9839, "dram_stalls": 876, "shmem_stalls": 49638,
-    "l2_bw": 82.2801, "sim_time_sec": 21,
-}
+
+
+async def run_real_experiment(config: dict) -> tuple:
+    """Run a REAL experiment via the backend and return (config, stats).
+
+    Posts to /experiments/run and polls /experiments/{id} until the simulation
+    completes — so the specialists analyze fresh simulation data, not a fixed
+    snapshot. Raises if it doesn't finish in time.
+    """
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=180)) as s:
+        async with s.post(f"{BACKEND_URL}/experiments/run",
+                          json={"config": config, "benchmark": "dct8x8"}) as r:
+            exp_id = (await r.json())["exp_id"]
+        for _ in range(60):  # up to ~120s
+            await asyncio.sleep(2)
+            async with s.get(f"{BACKEND_URL}/experiments/{exp_id}") as r:
+                if r.status == 200:
+                    exp = await r.json()
+                    if exp.get("stats", {}).get("ipc") is not None:
+                        return exp["config"], exp["stats"]
+    raise RuntimeError("experiment did not complete in time")
 
 
 # --- inter-agent message models ------------------------------------------
@@ -76,8 +98,8 @@ def make_specialist(name: str) -> Agent:
     a = Agent(
         name=f"gpu-{name}-agent",
         seed=os.environ.get(f"FETCH_{name.upper()}_SEED", f"gpu-{name}-agent-seed-001"),
-        mailbox=True,
-        publish_agent_details=True,
+        mailbox=MAILBOX,
+        publish_agent_details=MAILBOX,
     )
 
     @a.on_message(model=AnalyzeRequest)
@@ -114,8 +136,8 @@ SPECIALIST_ADDR = {
 orchestrator = Agent(
     name="gpu-orchestrator-agent",
     seed=os.environ.get("FETCH_ORCHESTRATOR_SEED", "gpu-orchestrator-agent-seed-001"),
-    mailbox=True,
-    publish_agent_details=True,
+    mailbox=MAILBOX,
+    publish_agent_details=MAILBOX,
 )
 chat = Protocol(spec=chat_protocol_spec)
 
@@ -127,12 +149,24 @@ _pending: dict = {}
 async def on_chat(ctx: Context, sender: str, msg: ChatMessage):
     await ctx.send(sender, ChatAcknowledgement(
         timestamp=datetime.utcnow(), acknowledged_msg_id=msg.msg_id))
+
+    # Run a REAL experiment first, then delegate analysis of its fresh stats.
+    try:
+        config, stats = await run_real_experiment(BASELINE_CONFIG)
+    except Exception as exc:  # noqa: BLE001
+        await ctx.send(sender, ChatMessage(
+            timestamp=datetime.utcnow(), msg_id=uuid4(),
+            content=[TextContent(type="text", text=f"Could not run a simulation: {exc}"),
+                     EndSessionContent(type="end-session")]))
+        return
+
     req_id = uuid4().hex
-    _pending[req_id] = {"sender": sender, "results": {}}
-    ctx.logger.info(f"delegating analysis to {len(SPECIALISTS)} specialist agents")
+    _pending[req_id] = {"sender": sender, "results": {}, "ipc": stats.get("ipc")}
+    ctx.logger.info(f"real sim done (IPC {stats.get('ipc')}); delegating to "
+                    f"{len(SPECIALISTS)} specialist agents")
     for name in SPECIALISTS:
         await ctx.send(SPECIALIST_ADDR[name], AnalyzeRequest(
-            req_id=req_id, agent=name, config=BASELINE_CONFIG, stats=BASELINE_STATS))
+            req_id=req_id, agent=name, config=config, stats=stats))
 
 
 @orchestrator.on_message(model=AnalyzeResult)
@@ -147,8 +181,9 @@ async def on_result(ctx: Context, sender: str, msg: AnalyzeResult):
     lines = [f"• {a.upper()} [{p['results'][a].status}]: {p['results'][a].text}"
              for a in SPECIALISTS if a in p["results"]]
     reply = (
-        "Three specialist agents analyzed the baseline JPEG/DCT8x8 config "
-        "(collaborating via Fetch.ai messaging):\n\n" + "\n\n".join(lines)
+        f"Ran a real JPEG/DCT8x8 simulation (IPC = {p.get('ipc')}). Three "
+        f"specialist agents analyzed it, collaborating via Fetch.ai messaging:\n\n"
+        + "\n\n".join(lines)
     )
     await ctx.send(p["sender"], ChatMessage(
         timestamp=datetime.utcnow(), msg_id=uuid4(),
@@ -164,14 +199,18 @@ async def on_ack(ctx: Context, sender: str, msg: ChatAcknowledgement):
 
 orchestrator.include(chat, publish_manifest=True)
 
-
-bureau = Bureau()
-for _a in (orchestrator, memory_agent, warp_agent, bottleneck_agent):
-    bureau.add(_a)
+AGENTS = (orchestrator, memory_agent, warp_agent, bottleneck_agent)
 
 
-if __name__ == "__main__":
+def run():
+    bureau = Bureau(port=BUREAU_PORT)
+    for _a in AGENTS:
+        bureau.add(_a)
     print("Orchestrator:", orchestrator.address)
     for name, addr in SPECIALIST_ADDR.items():
         print(f"{name}:", addr)
     bureau.run()
+
+
+if __name__ == "__main__":
+    run()
