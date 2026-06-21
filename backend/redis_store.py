@@ -16,13 +16,17 @@ import json
 import os
 from typing import List, Optional
 
-from .models import Experiment
+from .models import Experiment, SimReport
 
 INDEX_KEY = "experiments:index"
 
 
 def _key(exp_id: str) -> str:
     return f"exp:{exp_id}"
+
+
+def _report_key(exp_id: str) -> str:
+    return f"report:{exp_id}"
 
 
 class RedisExperimentStore:
@@ -75,6 +79,14 @@ class RedisExperimentStore:
             if exp is not None:
                 out.append(exp)
         return out
+
+    def save_report(self, exp_id: str, report: SimReport) -> None:
+        # heavy tier kept under its own key so history payloads stay small
+        self.client.set(_report_key(exp_id), json.dumps(report.to_dict()))
+
+    def get_report(self, exp_id: str) -> Optional[SimReport]:
+        raw = self.client.get(_report_key(exp_id))
+        return SimReport.from_dict(json.loads(raw)) if raw else None
 
     @staticmethod
     def _from_hash(d: dict) -> Experiment:

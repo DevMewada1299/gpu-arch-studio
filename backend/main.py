@@ -203,6 +203,16 @@ def experiment_get(exp_id: str):
     return exp.to_dict()
 
 
+@app.get("/experiments/{exp_id}/details")
+def experiment_details(exp_id: str):
+    """Rich SimReport for the Nsight-style deep-dive (per-SM heatmap, traffic,
+    warp distribution, latency histograms, DRAM bottlenecks)."""
+    report = STORE.get_report(exp_id)
+    if report is None:
+        raise HTTPException(404, f"no report for {exp_id!r}")
+    return report.to_dict()
+
+
 @app.post("/explore")
 def explore():
     raise HTTPException(

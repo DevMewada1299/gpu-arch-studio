@@ -73,6 +73,16 @@ def main():
     assert any(e["exp_id"] == exp_id for e in history), "run not in history"
     print(f"PASS: /experiments/history  ({len(history)} experiments)")
 
+    details = _get(f"/experiments/{exp_id}/details")
+    assert details["kernels"], "no per-kernel data in report"
+    assert len(details["per_sm_l1d"]) >= 1, "no per-SM heatmap data"
+    assert details["dram"], "no DRAM data"
+    print(
+        f"PASS: /details  kernels={len(details['kernels'])} "
+        f"SMs={len(details['per_sm_l1d'])} "
+        f"warp_scoreboard={details['warp'].get('scoreboard')}"
+    )
+
     print("=" * 60)
     print("ALL API E2E CHECKS PASSED")
 

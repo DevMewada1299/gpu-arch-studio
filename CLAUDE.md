@@ -159,7 +159,12 @@ GET  /experiments/{exp_id}/stream    (SSE)
      → streams: {type:"output", line} ... {type:"complete", stats}
 
 GET  /experiments/history
-     → all past experiments from Redis
+     → all past experiments from Redis (light SimStats only)
+
+GET  /experiments/{exp_id}            → one experiment (config + SimStats)
+GET  /experiments/{exp_id}/details    → rich SimReport for the deep-dive view
+     (per-SM L1D heatmap, cache/traffic breakdowns, warp distribution,
+      latency histograms, DRAM bandwidth bottlenecks, instr mix, stalls)
 
 POST /explore
      body: { benchmark: string, goal: string, constraints?: object, containers: string[] }
@@ -235,6 +240,7 @@ takes minutes — judges won't wait. Build a `DEMO_MODE` flag:
 - [x] docker_manager can exec a sim from Python
 - [x] config_generator templates configs (+ matching interconnect)
 - [x] stats_parser extracts real fields from output
+- [x] report_parser: rich SimReport (Nsight-style) for the deep-dive view
 - [x] runner: GPUConfig -> run -> parsed Experiment (stored, Sentry on failure)
 - [ ] FastAPI /experiments/run works end to end
 - [ ] Frontend config panel sends runs
