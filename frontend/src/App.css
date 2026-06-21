@@ -1,0 +1,22 @@
+/* All styling is handled by Tailwind. Custom overrides only below. */
+
+/* Thin scrollbar for panels */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.4);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}
+
+/* Prevent layout reflow from scrollbar appearing */
+html {
+  scrollbar-gutter: stable;
+}
