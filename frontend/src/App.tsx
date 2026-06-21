@@ -20,6 +20,26 @@ export default function App() {
   )
   // Presentational-only: controls the History slide-out drawer.
   const [historyOpen, setHistoryOpen] = useState(false)
+  // Presentational-only: width of the resizable Configuration sidebar.
+  const [sidebarWidth, setSidebarWidth] = useState(380)
+
+  // Drag-to-resize the Configuration sidebar (UI interaction only).
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const onMove = (ev: MouseEvent) => {
+      setSidebarWidth(Math.min(560, Math.max(300, ev.clientX)))
+    }
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove)
+      window.removeEventListener("mouseup", onUp)
+      document.body.style.cursor = ""
+      document.body.style.userSelect = ""
+    }
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+  }
 
   // MOCK: no backend yet. Step 2 just logs the emitted GPUConfig.
   const handleRun = () => {
@@ -42,10 +62,14 @@ export default function App() {
             <Cpu size={17} strokeWidth={2} />
           </div>
           <div className="leading-tight">
-            <h1 className="text-[15px] font-semibold tracking-tight text-neutral-900">
-              GPU Architecture Studio
+            <h1 className="text-[22px] leading-none tracking-[-0.02em] whitespace-nowrap">
+              <span className="font-extrabold text-neutral-900">GPU</span>
+              <span className="font-light text-neutral-400">&nbsp;Architecture&nbsp;</span>
+              <span className="font-extrabold text-indigo-600">Studio</span>
             </h1>
-            <p className="text-[11px] text-neutral-400">GTX 480 · Fermi · cc 2.0</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-neutral-400 mt-1.5">
+              GTX 480 · Fermi · cc 2.0
+            </p>
           </div>
         </div>
 
@@ -84,8 +108,11 @@ export default function App() {
       {/* ── Main ────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex overflow-hidden min-h-0">
 
-        {/* Left rail — Config */}
-        <aside className="w-[320px] flex-none flex flex-col border-r border-neutral-200/80 bg-white overflow-y-auto">
+        {/* Left rail — Config (resizable) */}
+        <aside
+          style={{ width: sidebarWidth }}
+          className="flex-none flex flex-col bg-white overflow-y-auto"
+        >
           <div className="px-5 py-5">
             <h2 className="text-sm font-semibold text-neutral-900 mb-4">Configuration</h2>
             <ConfigPanel
@@ -96,6 +123,16 @@ export default function App() {
             />
           </div>
         </aside>
+
+        {/* Resize handle */}
+        <div
+          onMouseDown={startResize}
+          className="flex-none w-[6px] cursor-col-resize group flex items-stretch justify-center hover:bg-indigo-50/60 transition-colors"
+          role="separator"
+          aria-orientation="vertical"
+        >
+          <div className="w-px bg-neutral-200 group-hover:bg-indigo-400 transition-colors" />
+        </div>
 
         {/* Center — Performance + Agents (hero) */}
         <main className="flex-1 overflow-y-auto">

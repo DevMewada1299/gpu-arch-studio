@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, RotateCcw } from "lucide-react";
-import { Segmented } from "./Segmented";
+import { SegmentedWithOther } from "./SegmentedWithOther";
 import type { GPUConfig } from "../types";
 import { BENCHMARKS, type Benchmark } from "../constants";
 import { baselineConfig } from "../mocks";
@@ -120,7 +120,7 @@ export default function ConfigPanel({
       {/* Benchmark — always visible */}
       <div className="rounded-2xl border border-neutral-200/80 bg-white px-4 py-4 space-y-2">
         <span className="text-[13px] font-medium text-neutral-700">Benchmark</span>
-        <Segmented
+        <SegmentedWithOther
           options={BENCHMARKS.map((b) => ({ value: b, label: b }))}
           value={benchmark}
           onChange={onBenchmarkChange}
@@ -130,28 +130,28 @@ export default function ConfigPanel({
       {/* Compute — collapsible */}
       <Section title="Compute" open={computeOpen} onToggle={() => setComputeOpen((o) => !o)}>
         <Field label="SM Clusters">
-          <Segmented
+          <SegmentedWithOther
             options={N_CLUSTERS.map((v) => ({ value: v, label: String(v) }))}
             value={config.n_clusters}
             onChange={(v) => set("n_clusters", v)}
           />
         </Field>
         <Field label="Cores / Cluster">
-          <Segmented
+          <SegmentedWithOther
             options={CORES_PER_CLUSTER.map((v) => ({ value: v, label: String(v) }))}
             value={config.cores_per_cluster}
             onChange={(v) => set("cores_per_cluster", v)}
           />
         </Field>
         <Field label="Schedulers / Core">
-          <Segmented
+          <SegmentedWithOther
             options={SCHEDULERS_PER_CORE.map((v) => ({ value: v, label: String(v) }))}
             value={config.num_sched_per_core}
             onChange={(v) => set("num_sched_per_core", v)}
           />
         </Field>
         <Field label="Warp Scheduler">
-          <Segmented
+          <SegmentedWithOther
             options={SCHEDULERS.map((v) => ({ value: v, label: SCHEDULER_LABELS[v] }))}
             value={config.scheduler}
             onChange={(v) => set("scheduler", v)}
@@ -162,28 +162,28 @@ export default function ConfigPanel({
       {/* Memory — collapsible */}
       <Section title="Memory" open={memoryOpen} onToggle={() => setMemoryOpen((o) => !o)}>
         <Field label="L1 Cache" hint={`${l1SizeKb(config.l1_sets)} KB`}>
-          <Segmented
+          <SegmentedWithOther
             options={L1_SETS.map((v) => ({ value: v, label: String(v) }))}
             value={config.l1_sets}
             onChange={(v) => set("l1_sets", v)}
           />
         </Field>
         <Field label="L2 Cache" hint={`${l2SizeKb(config.l2_sets)} KB`}>
-          <Segmented
+          <SegmentedWithOther
             options={L2_SETS.map((v) => ({ value: v, label: String(v) }))}
             value={config.l2_sets}
             onChange={(v) => set("l2_sets", v)}
           />
         </Field>
         <Field label="Memory Controllers">
-          <Segmented
+          <SegmentedWithOther
             options={N_MEM.map((v) => ({ value: v, label: String(v) }))}
             value={config.n_mem}
             onChange={(v) => set("n_mem", v)}
           />
         </Field>
         <Field label="Shared Memory" hint={`${config.shmem_size / 1024} KB`}>
-          <Segmented
+          <SegmentedWithOther
             options={SHMEM.map((v) => ({ value: v, label: `${v / 1024}K` }))}
             value={config.shmem_size}
             onChange={(v) => set("shmem_size", v)}

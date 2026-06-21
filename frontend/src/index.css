@@ -17,6 +17,18 @@
 }
 
 @layer utilities {
+  /* Fluid single-row segmented control: pills + text + padding scale smoothly
+     with the control's own width (container query), so options never wrap. */
+  .seg-row {
+    container-type: inline-size;
+  }
+  .seg-pill {
+    font-size: clamp(8px, 4.4cqi, 12px);
+    padding-block: clamp(3px, 1.5cqi, 6px);
+    padding-inline: clamp(2px, 2.4cqi, 7px);
+    line-height: 1.15;
+  }
+
   /* Soft entrance for streaming agent cards */
   @keyframes fade-in-up {
     from { opacity: 0; transform: translateY(8px); }
