@@ -26,6 +26,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from . import docker_manager, monitoring
+from .explore import explore
 from .models import GPUConfig
 from .runner import BENCHMARKS, DEFAULT_BENCHMARK, run_experiment
 from .store import InMemoryExperimentStore
@@ -167,11 +168,9 @@ async def experiments_run(req: RunRequest):
     return {"exp_id": exp_id}
 
 
-@app.get("/experiments/{exp_id}/stream")
-async def experiments_stream(exp_id: str):
-    handle = RUNS.get(exp_id)
-    if handle is None:
-        raise HTTPException(404, f"no run {exp_id!r} (or it predates this server)")
+def _sse_response(handle: "RunHandle") -> StreamingResponse:
+    """SSE from a buffered handle — replays all events then tails new ones.
+    Late subscribers still see everything (events are buffered, not consumed)."""
 
     async def gen():
         i = 0
@@ -188,6 +187,14 @@ async def experiments_stream(exp_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/experiments/{exp_id}/stream")
+async def experiments_stream(exp_id: str):
+    handle = RUNS.get(exp_id)
+    if handle is None:
+        raise HTTPException(404, f"no run {exp_id!r} (or it predates this server)")
+    return _sse_response(handle)
 
 
 @app.get("/experiments/history")
@@ -213,8 +220,62 @@ def experiment_details(exp_id: str):
     return report.to_dict()
 
 
+class ExploreRequest(BaseModel):
+    goal: str
+    benchmark: str = DEFAULT_BENCHMARK
+    constraints: Optional[dict] = None
+    max_iterations: int = 6
+    start_config: Optional[GPUConfigIn] = None
+    container_id: Optional[str] = None
+
+
+EXPLORES: Dict[str, RunHandle] = {}
+
+
+async def _explore_job(session_id: str, params: dict):
+    handle = EXPLORES[session_id]
+    loop = asyncio.get_running_loop()
+
+    def producer():
+        # explore() is a sync generator (runs blocking sims + agent calls);
+        # iterate it in a worker thread and hand each event back to the loop.
+        for ev in explore(**params):
+            loop.call_soon_threadsafe(handle.events.append, ev)
+
+    try:
+        await asyncio.to_thread(producer)
+    except Exception as exc:  # noqa: BLE001
+        monitoring.capture_exception(exc, session_id=session_id)
+        handle.events.append({"type": "error", "message": str(exc)})
+    finally:
+        handle.done = True
+
+
 @app.post("/explore")
-def explore():
-    raise HTTPException(
-        501, "autonomous exploration not implemented yet (agent core pending)"
+async def explore_start(req: ExploreRequest):
+    if req.benchmark not in BENCHMARKS:
+        raise HTTPException(400, f"unknown benchmark {req.benchmark!r}")
+    session_id = os.urandom(4).hex()
+    EXPLORES[session_id] = RunHandle(req.container_id)
+    params = dict(
+        goal=req.goal,
+        benchmark=req.benchmark,
+        constraints=req.constraints,
+        max_iterations=req.max_iterations,
+        container=req.container_id,
+        store=STORE,
+        start_config=(
+            GPUConfig.from_dict(req.start_config.model_dump())
+            if req.start_config else None
+        ),
     )
+    asyncio.create_task(_explore_job(session_id, params))
+    return {"session_id": session_id}
+
+
+@app.get("/explore/{session_id}/stream")
+async def explore_stream(session_id: str):
+    handle = EXPLORES.get(session_id)
+    if handle is None:
+        raise HTTPException(404, f"no exploration {session_id!r}")
+    return _sse_response(handle)
