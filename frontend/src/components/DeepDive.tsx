@@ -81,7 +81,10 @@ const tooltipStyle = {
   boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
 } as const;
 
-export default function DeepDive({ experiment, report, onClose }: DeepDiveProps) {
+// The reusable Deep Dive visualizations (no modal chrome). Rendered both inside
+// the modal below (from History) and directly on the Home page. Same graphs,
+// same calculations — only the surrounding container differs.
+export function DeepDiveContent({ report }: { report: SimReport }) {
   // ── warp-state donut (distinct cycle outcomes) ──────────────────────────
   const warp = report.warp;
   const warpData = (["issued", "idle", "scoreboard", "stall"] as const)
@@ -138,47 +141,8 @@ export default function DeepDive({ experiment, report, onClose }: DeepDiveProps)
     }))
     .filter((d) => d.hit + d.miss > 0);
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-neutral-900/40 backdrop-blur-sm p-4 sm:p-6 animate-backdrop-in"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-3xl border border-neutral-200 bg-neutral-50 shadow-2xl shadow-black/10 animate-fade-in-up"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-neutral-200 bg-white/90 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
-              <Microscope size={18} />
-            </div>
-            <div>
-              <h2 className="text-[15px] font-semibold text-neutral-900">
-                Deep Dive · {experiment.exp_id}
-              </h2>
-              <p className="text-[12px] text-neutral-400 mt-0.5">
-                {experiment.benchmark} · low-level profile (Nsight-style)
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-              <p className="text-[10px] uppercase tracking-wide text-neutral-400">IPC</p>
-              <p className="text-lg font-semibold font-metric text-indigo-600 leading-none">
-                {experiment.stats.ipc.toFixed(2)}
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-
-        <div className="p-6 space-y-4">
+  return (
+    <div className="space-y-4">
           {/* Kernels */}
           <Panel title="Kernels" subtitle={`${report.kernels.length} launches`}>
             <div className="space-y-3">
@@ -434,6 +398,55 @@ export default function DeepDive({ experiment, report, onClose }: DeepDiveProps)
               <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-rose-500" />miss</span>
             </div>
           </Panel>
+    </div>
+  );
+}
+
+// Modal wrapper used by History → Deep dive. Unchanged behavior: same chrome,
+// same props, portaled to <body>; the body is now DeepDiveContent.
+export default function DeepDive({ experiment, report, onClose }: DeepDiveProps) {
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-neutral-900/40 backdrop-blur-sm p-4 sm:p-6 animate-backdrop-in"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-3xl border border-neutral-200 bg-neutral-50 shadow-2xl shadow-black/10 animate-fade-in-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-neutral-200 bg-white/90 backdrop-blur">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+              <Microscope size={18} />
+            </div>
+            <div>
+              <h2 className="text-[15px] font-semibold text-neutral-900">
+                Deep Dive · {experiment.exp_id}
+              </h2>
+              <p className="text-[12px] text-neutral-400 mt-0.5">
+                {experiment.benchmark} · low-level profile (Nsight-style)
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right hidden sm:block">
+              <p className="text-[10px] uppercase tracking-wide text-neutral-400">IPC</p>
+              <p className="text-lg font-semibold font-metric text-indigo-600 leading-none">
+                {experiment.stats.ipc.toFixed(2)}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6">
+          <DeepDiveContent report={report} />
         </div>
       </div>
     </div>,

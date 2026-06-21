@@ -64,6 +64,13 @@
   .animate-drawer-in {
     animation: drawer-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
+  @keyframes drawer-in-left {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(0); }
+  }
+  .animate-drawer-in-left {
+    animation: drawer-in-left 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
   @keyframes backdrop-in {
     from { opacity: 0; }
     to   { opacity: 1; }

@@ -1,14 +1,15 @@
 import { useState } from 'react'
-import { Cpu, Play, Sparkles, History, X } from 'lucide-react'
+import { Play, Sparkles, History, X, SlidersHorizontal, Microscope } from 'lucide-react'
 import './App.css'
 import ConfigPanel from './components/ConfigPanel'
 import PerformanceDashboard from './components/PerformanceDashboard'
 import AgentPanel from './components/AgentPanel'
 import ExperimentHistory from './components/ExperimentHistory'
 import ContainerSelector from './components/ContainerSelector'
+import { DeepDiveContent } from './components/DeepDive'
 import type { GPUConfig } from './types'
 import type { Benchmark } from './constants'
-import { baselineConfig, mockContainers } from './mocks'
+import { baselineConfig, mockContainers, mockReport } from './mocks'
 
 export default function App() {
   const [config, setConfig] = useState<GPUConfig>(baselineConfig)
@@ -20,26 +21,8 @@ export default function App() {
   )
   // Presentational-only: controls the History slide-out drawer.
   const [historyOpen, setHistoryOpen] = useState(false)
-  // Presentational-only: width of the resizable Configuration sidebar.
-  const [sidebarWidth, setSidebarWidth] = useState(380)
-
-  // Drag-to-resize the Configuration sidebar (UI interaction only).
-  const startResize = (e: React.MouseEvent) => {
-    e.preventDefault()
-    const onMove = (ev: MouseEvent) => {
-      setSidebarWidth(Math.min(560, Math.max(300, ev.clientX)))
-    }
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove)
-      window.removeEventListener("mouseup", onUp)
-      document.body.style.cursor = ""
-      document.body.style.userSelect = ""
-    }
-    window.addEventListener("mousemove", onMove)
-    window.addEventListener("mouseup", onUp)
-    document.body.style.cursor = "col-resize"
-    document.body.style.userSelect = "none"
-  }
+  // Presentational-only: controls the Configuration slide-over (from the left).
+  const [configOpen, setConfigOpen] = useState(false)
 
   // MOCK: no backend yet. Step 2 just logs the emitted GPUConfig.
   const handleRun = () => {
@@ -52,14 +35,43 @@ export default function App() {
     setExploreRunId((id) => id + 1)
   }
 
+  // Run from the Configuration drawer: trigger the existing run flow, then
+  // close the drawer. (Run logic unchanged — same handleRun.)
+  const handleRunExperiment = () => {
+    handleRun()
+    setConfigOpen(false)
+  }
+
   return (
     <div className="h-screen flex flex-col bg-neutral-50 text-neutral-900 overflow-hidden">
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header className="flex-none flex items-center justify-between px-6 h-16 border-b border-neutral-200/80 bg-white/80 backdrop-blur-sm">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white shadow-sm">
-            <Cpu size={17} strokeWidth={2} />
+          {/* Logo mark — inline gradient + inline SVG so it never depends on
+              Tailwind gradient class generation or the icon library. */}
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm"
+            style={{
+              background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+              boxShadow: "0 2px 8px rgba(99,102,241,0.30)",
+            }}
+          >
+            <svg
+              width="19"
+              height="19"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#ffffff"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="6" y="6" width="12" height="12" rx="2" />
+              <rect x="9.5" y="9.5" width="5" height="5" rx="1" />
+              <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2" />
+            </svg>
           </div>
           <div className="leading-tight">
             <h1 className="text-[22px] leading-none tracking-[-0.02em] whitespace-nowrap">
@@ -76,6 +88,15 @@ export default function App() {
         <div className="flex items-center gap-2">
           <ContainerSelector selected={containers} onChange={setContainers} />
 
+          {/* New Configuration — opens the config slide-over from the left */}
+          <button
+            onClick={() => setConfigOpen(true)}
+            className="flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3.5 py-1.5 text-[13px] font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 transition-colors"
+          >
+            <SlidersHorizontal size={14} className="text-indigo-500" />
+            New Configuration
+          </button>
+
           {/* History — opens the drawer */}
           <button
             onClick={() => setHistoryOpen(true)}
@@ -83,15 +104,6 @@ export default function App() {
           >
             <History size={14} className="text-neutral-400" />
             History
-          </button>
-
-          {/* Run — secondary */}
-          <button
-            onClick={handleRun}
-            className="flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-50 transition-colors"
-          >
-            <Play size={13} className="text-neutral-500" />
-            Run
           </button>
 
           {/* Explore — primary, AI-first */}
@@ -106,44 +118,48 @@ export default function App() {
       </header>
 
       {/* ── Main ────────────────────────────────────────────────────────── */}
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
 
-        {/* Left rail — Config (resizable) */}
-        <aside
-          style={{ width: sidebarWidth }}
-          className="flex-none flex flex-col bg-white overflow-y-auto"
-        >
-          <div className="px-5 py-5">
-            <h2 className="text-sm font-semibold text-neutral-900 mb-4">Configuration</h2>
-            <ConfigPanel
-              config={config}
-              onChange={setConfig}
-              benchmark={benchmark}
-              onBenchmarkChange={setBenchmark}
-            />
-          </div>
-        </aside>
-
-        {/* Resize handle */}
-        <div
-          onMouseDown={startResize}
-          className="flex-none w-[6px] cursor-col-resize group flex items-stretch justify-center hover:bg-indigo-50/60 transition-colors"
-          role="separator"
-          aria-orientation="vertical"
-        >
-          <div className="w-px bg-neutral-200 group-hover:bg-indigo-400 transition-colors" />
+        {/* Top summary cards — IPC · Occupancy · Cache Hit Rate */}
+        <div className="flex-none px-6 pt-6 pb-1">
+          <PerformanceDashboard />
         </div>
 
-        {/* Center — Performance + Agents (hero) */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto px-8 py-10 space-y-10">
-            <PerformanceDashboard />
-            <AgentPanel key={exploreRunId} runId={exploreRunId} onProposal={setConfig} />
-          </div>
-        </main>
-      </div>
+        {/* Two hero sections — always side by side, equal width */}
+        <div className="flex-1 min-h-0 grid grid-cols-2 gap-6 px-6 py-6 overflow-hidden">
 
-      {/* ── History drawer ──────────────────────────────────────────────── */}
+          {/* Deep Dive (reuses the exact same visualizations as History → Deep dive) */}
+          <section className="flex flex-col min-h-0 rounded-2xl border border-neutral-200/80 bg-neutral-50 overflow-hidden">
+            <div className="flex-none flex items-center justify-between px-5 py-4 border-b border-neutral-200/70 bg-white/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                  <Microscope size={16} />
+                </div>
+                <div>
+                  <h2 className="text-[15px] font-semibold text-neutral-900 leading-tight">
+                    Deep Dive Analysis
+                  </h2>
+                  <p className="text-[12px] text-neutral-400 leading-tight">
+                    Low-level profile · Nsight-style
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto p-4">
+              <DeepDiveContent report={mockReport} />
+            </div>
+          </section>
+
+          {/* AI Exploration Agents */}
+          <section className="flex flex-col min-h-0 rounded-2xl border border-neutral-200/80 bg-neutral-50 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-y-auto p-5">
+              <AgentPanel key={exploreRunId} runId={exploreRunId} onProposal={setConfig} />
+            </div>
+          </section>
+        </div>
+      </main>
+
+      {/* ── History drawer (unchanged) ─────────────────────────────────── */}
       {historyOpen && (
         <div className="fixed inset-0 z-40">
           {/* Backdrop */}
@@ -171,6 +187,56 @@ export default function App() {
             </div>
             <div className="flex-1 min-h-0">
               <ExperimentHistory />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Configuration slide-over (from the left) ───────────────────── */}
+      {configOpen && (
+        <div className="fixed inset-0 z-40">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-neutral-900/20 backdrop-blur-[2px] animate-backdrop-in"
+            onClick={() => setConfigOpen(false)}
+          />
+          {/* Panel (slides from the left) */}
+          <div className="absolute left-0 top-0 h-full w-full max-w-[400px] bg-neutral-50 border-r border-neutral-200 shadow-2xl shadow-black/10 flex flex-col animate-drawer-in-left">
+            <div className="flex-none flex items-center justify-between px-5 h-16 border-b border-neutral-200 bg-white">
+              <div>
+                <h2 className="text-[15px] font-semibold text-neutral-900">
+                  New Configuration
+                </h2>
+                <p className="text-[12px] text-neutral-400 mt-0.5">
+                  Set up a simulation run
+                </p>
+              </div>
+              <button
+                onClick={() => setConfigOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
+              <ConfigPanel
+                config={config}
+                onChange={setConfig}
+                benchmark={benchmark}
+                onBenchmarkChange={setBenchmark}
+              />
+            </div>
+
+            {/* Prominent Run Experiment action */}
+            <div className="flex-none border-t border-neutral-200 bg-white p-4">
+              <button
+                onClick={handleRunExperiment}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-[14px] font-semibold text-white hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-600/20"
+              >
+                <Play size={15} />
+                Run Experiment
+              </button>
             </div>
           </div>
         </div>

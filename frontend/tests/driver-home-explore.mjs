@@ -1,0 +1,18 @@
+import { createRequire } from 'module';
+const require = createRequire('/Users/skanda/.npm/_npx/e41f203b7505f1fb/node_modules/');
+const { chromium } = require('playwright');
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+const errors = [];
+page.on('console', m => { if (m.type()==='error') errors.push(m.text()); });
+page.on('pageerror', e => errors.push('PAGEERROR: '+e.message));
+await page.goto('http://localhost:3000', { waitUntil: 'networkidle' });
+await page.waitForTimeout(700);
+await page.getByRole('button', { name: 'Explore' }).click();
+await page.waitForTimeout(3500);
+const body = await page.locator('body').innerText();
+console.log('Exploring indicator present:', body.includes('Exploring'));
+console.log('Memory Agent streamed reasoning present:', body.includes('L1 hit rate is critically low'));
+await page.screenshot({ path: '/tmp/hl-4-home-explore.png' });
+console.log('ERRORS:', errors.length ? errors.join('\n') : 'none');
+await browser.close();
