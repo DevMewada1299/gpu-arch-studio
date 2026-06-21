@@ -44,6 +44,9 @@ monitoring.init_sentry()  # no-op unless SENTRY_DSN is set
 
 
 def _make_store():
+    if os.environ.get("DISABLE_REDIS") == "1":
+        print("[store] DISABLE_REDIS=1 -> in-memory store")
+        return InMemoryExperimentStore()
     url = os.environ.get("REDIS_URL")
     if url:
         try:

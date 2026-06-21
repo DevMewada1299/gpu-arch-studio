@@ -97,7 +97,12 @@ def run_experiment(
             log_path=log_path,
         )
         if store is not None:
-            store.save(exp)
+            try:
+                store.save(exp)
+            except Exception as exc:  # noqa: BLE001 - persistence is best-effort
+                # A flaky datastore must NOT lose a successful run. Capture and
+                # carry on — the result is still returned/streamed to the user.
+                monitoring.capture_exception(exc, exp_id=exp_id, where="store.save")
         return exp
 
     # Trace every sim as a Sentry transaction tagged with the config, so runs
@@ -140,7 +145,10 @@ def run_experiment(
         if save_artifacts:
             _archive_report(exp_id, report)
         if store is not None:
-            store.save_report(exp_id, report)
+            try:
+                store.save_report(exp_id, report)
+            except Exception as exc:  # noqa: BLE001 - best-effort
+                monitoring.capture_exception(exc, exp_id=exp_id, where="store.save_report")
 
         if is_success(output) and (exit_code is None or exit_code == 0):
             if txn:
