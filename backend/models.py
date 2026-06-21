@@ -121,6 +121,36 @@ class SimReport:
 
 
 @dataclass
+class AgentOutput:
+    """One agent's analysis of an experiment (streamed to the UI)."""
+    agent: str                      # "memory" | "warp" | "bottleneck" | "orchestrator"
+    text: str = ""
+    status: str = "amber"           # "green" | "amber" | "red"
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class OrchestratorDecision:
+    """The orchestrator's proposal for the next config to try."""
+    reasoning: str = ""
+    next_config: Optional["GPUConfig"] = None
+    converged: bool = False
+    best_exp_id: Optional[str] = None
+    best_reason: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "reasoning": self.reasoning,
+            "next_config": self.next_config.to_dict() if self.next_config else None,
+            "converged": self.converged,
+            "best_exp_id": self.best_exp_id,
+            "best_reason": self.best_reason,
+        }
+
+
+@dataclass
 class Experiment:
     exp_id: str
     config: GPUConfig

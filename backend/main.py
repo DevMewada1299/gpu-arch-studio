@@ -26,6 +26,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from . import docker_manager, monitoring
+from .explore import explore
 from .models import GPUConfig
 from .runner import BENCHMARKS, DEFAULT_BENCHMARK, run_experiment
 from .store import InMemoryExperimentStore
@@ -43,6 +44,9 @@ monitoring.init_sentry()  # no-op unless SENTRY_DSN is set
 
 
 def _make_store():
+    if os.environ.get("DISABLE_REDIS") == "1":
+        print("[store] DISABLE_REDIS=1 -> in-memory store")
+        return InMemoryExperimentStore()
     url = os.environ.get("REDIS_URL")
     if url:
         try:
@@ -59,6 +63,10 @@ def _make_store():
 
 
 STORE = _make_store()
+
+from .agent_memory import make_agent_memory
+
+AGENT_MEMORY = make_agent_memory()
 
 app = FastAPI(title="GPU Architecture Studio API")
 app.add_middleware(
@@ -167,11 +175,9 @@ async def experiments_run(req: RunRequest):
     return {"exp_id": exp_id}
 
 
-@app.get("/experiments/{exp_id}/stream")
-async def experiments_stream(exp_id: str):
-    handle = RUNS.get(exp_id)
-    if handle is None:
-        raise HTTPException(404, f"no run {exp_id!r} (or it predates this server)")
+def _sse_response(handle: "RunHandle") -> StreamingResponse:
+    """SSE from a buffered handle — replays all events then tails new ones.
+    Late subscribers still see everything (events are buffered, not consumed)."""
 
     async def gen():
         i = 0
@@ -188,6 +194,14 @@ async def experiments_stream(exp_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/experiments/{exp_id}/stream")
+async def experiments_stream(exp_id: str):
+    handle = RUNS.get(exp_id)
+    if handle is None:
+        raise HTTPException(404, f"no run {exp_id!r} (or it predates this server)")
+    return _sse_response(handle)
 
 
 @app.get("/experiments/history")
@@ -213,8 +227,125 @@ def experiment_details(exp_id: str):
     return report.to_dict()
 
 
+class ExploreRequest(BaseModel):
+    goal: str
+    benchmark: str = DEFAULT_BENCHMARK
+    constraints: Optional[dict] = None
+    max_iterations: int = 6
+    start_config: Optional[GPUConfigIn] = None
+    container_id: Optional[str] = None
+
+
+EXPLORES: Dict[str, RunHandle] = {}
+
+
+async def _explore_job(session_id: str, params: dict):
+    handle = EXPLORES[session_id]
+    loop = asyncio.get_running_loop()
+
+    def producer():
+        # explore() is a sync generator (runs blocking sims + agent calls);
+        # iterate it in a worker thread and hand each event back to the loop.
+        for ev in explore(**params):
+            loop.call_soon_threadsafe(handle.events.append, ev)
+
+    try:
+        await asyncio.to_thread(producer)
+    except Exception as exc:  # noqa: BLE001
+        monitoring.capture_exception(exc, session_id=session_id)
+        handle.events.append({"type": "error", "message": str(exc)})
+    finally:
+        handle.done = True
+
+
 @app.post("/explore")
-def explore():
-    raise HTTPException(
-        501, "autonomous exploration not implemented yet (agent core pending)"
+async def explore_start(req: ExploreRequest):
+    if req.benchmark not in BENCHMARKS:
+        raise HTTPException(400, f"unknown benchmark {req.benchmark!r}")
+    session_id = os.urandom(4).hex()
+    EXPLORES[session_id] = RunHandle(req.container_id)
+    params = dict(
+        goal=req.goal,
+        benchmark=req.benchmark,
+        constraints=req.constraints,
+        max_iterations=req.max_iterations,
+        container=req.container_id,
+        store=STORE,
+        memory=AGENT_MEMORY,
+        start_config=(
+            GPUConfig.from_dict(req.start_config.model_dump())
+            if req.start_config else None
+        ),
     )
+    asyncio.create_task(_explore_job(session_id, params))
+    return {"session_id": session_id}
+
+
+@app.get("/explore/{session_id}/stream")
+async def explore_stream(session_id: str):
+    handle = EXPLORES.get(session_id)
+    if handle is None:
+        raise HTTPException(404, f"no exploration {session_id!r}")
+    return _sse_response(handle)
+
+
+class AgentAnalyzeRequest(BaseModel):
+    agent: str                      # "memory" | "warp" | "bottleneck"
+    config: GPUConfigIn
+    stats: dict                     # SimStats fields
+    benchmark: str = DEFAULT_BENCHMARK
+
+
+@app.post("/agent/analyze")
+async def agent_analyze(req: AgentAnalyzeRequest):
+    """Run ONE specialist agent on given stats — used by the multi-agent Fetch
+    bureau so each specialist uAgent does its real Claude analysis here (where
+    the heavy deps live)."""
+    from .agent_engine import run_specialist
+    from .models import SimStats
+
+    out = await asyncio.to_thread(
+        run_specialist,
+        req.agent,
+        SimStats.from_dict(req.stats),
+        GPUConfig.from_dict(req.config.model_dump()),
+        req.benchmark,
+    )
+    return out.to_dict()
+
+
+@app.post("/explore/run")
+async def explore_run(req: ExploreRequest):
+    """Synchronous, bounded exploration that returns a final summary (no SSE).
+
+    Used by the Fetch.ai chat agent: one request in, the best config + reasoning
+    out. Blocks for the exploration (bounded by max_iterations); runs in a thread
+    so the event loop stays free.
+    """
+    if req.benchmark not in BENCHMARKS:
+        raise HTTPException(400, f"unknown benchmark {req.benchmark!r}")
+    params = dict(
+        goal=req.goal, benchmark=req.benchmark, constraints=req.constraints,
+        max_iterations=min(req.max_iterations, 4), container=req.container_id,
+        store=STORE, memory=AGENT_MEMORY,
+        start_config=(GPUConfig.from_dict(req.start_config.model_dump())
+                      if req.start_config else None),
+    )
+    events = await asyncio.to_thread(lambda: list(explore(**params)))
+
+    experiments = [e for e in events if e["type"] == "experiment"]
+    proposals = [e for e in events if e["type"] == "proposal"]
+    final = next((e for e in events if e["type"] == "converged"), {})
+    best_id = final.get("best_exp_id")
+    best = next((e for e in experiments if e["exp_id"] == best_id), None)
+    return {
+        "goal": req.goal,
+        "best_exp_id": best_id,
+        "best_config": best["config"] if best else None,
+        "best_ipc": best["stats"].get("ipc") if best else None,
+        "pareto": final.get("pareto", []),
+        "iterations": final.get("iterations", len(experiments)),
+        "runs": [{"exp_id": e["exp_id"], "ipc": e["stats"].get("ipc"),
+                  "n_clusters": e["config"].get("n_clusters")} for e in experiments],
+        "final_reasoning": proposals[-1]["reasoning"] if proposals else "",
+    }

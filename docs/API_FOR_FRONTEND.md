@@ -12,7 +12,8 @@
   Nsight-style deep-dive view — per-SM heatmap, traffic flow, warp/stall
   breakdowns, latency histograms, DRAM bottlenecks.
 - **Benchmark is `dct8x8`** (JPEG), not GEMM/vectoradd.
-- **`POST /explore` returns 501 for now** (agent core is being built).
+- **`POST /explore` is LIVE** — the autonomous loop (agents + orchestrator)
+  streams over SSE. See the Autonomous Exploration section below.
 
 ---
 
@@ -68,7 +69,8 @@ interface Experiment {
 | `GET /experiments/history` | — | `Experiment[]` (light, no SimReport) |
 | `GET /experiments/{id}` | — | `Experiment` |
 | `GET /experiments/{id}/details` | — | `SimReport` (rich, see below) |
-| `POST /explore` | (later) | **501 for now** |
+| `POST /explore` | `{ goal, benchmark?, constraints?, max_iterations?, start_config?, container_id? }` | `{ session_id }` |
+| `GET /explore/{session_id}/stream` | — (SSE) | autonomous-loop event stream, see below |
 
 ### Run flow
 1. `POST /experiments/run` → get `exp_id`.
@@ -145,7 +147,130 @@ uvicorn backend.main:app --reload --port 8000
 }
 ```
 
+## Autonomous Exploration (the agent panel)
+
+`POST /explore` starts the autonomous loop and returns `{ session_id }`. Open
+`EventSource("/explore/{session_id}/stream")` and render these `data:` events
+(each is one JSON object with a `type`):
+
+```ts
+// one iteration of: propose -> run sim -> agents analyze -> orchestrator proposes
+{ type: "iteration_start", iteration: number, config: GPUConfig }
+{ type: "experiment", iteration, exp_id, status, config: GPUConfig, stats: SimStats, error }
+{ type: "analysis", iteration, agents: {
+    memory:    { agent, text, status: "green"|"amber"|"red" },
+    warp:      { agent, text, status },
+    bottleneck:{ agent, text, status }      // status drives the card color
+  } }
+{ type: "proposal", iteration, reasoning: string, next_config: GPUConfig|null,
+  converged: boolean, best_exp_id, best_reason }
+{ type: "converged", best_exp_id, pareto: string[], iterations: number }  // final
+{ type: "note" | "error", message }
+```
+
+UI mapping: stream each agent's `text` into its card (typewriter), color by
+`status`; show the orchestrator's `reasoning` + proposed `next_config`; plot IPC
+per `experiment`; highlight `pareto` exp_ids and `best_exp_id` at the end. Each
+`experiment.exp_id` also has a full `SimReport` at `/experiments/{id}/details`
+for the deep-dive.
+
 ## Notes
-- `/explore` + its SSE (agent reasoning stream) are coming with the agent core;
-  shapes will be added here when ready.
 - All `SimStats` rates are fractions (0-1) — multiply by 100 for `%` display.
+
+---
+
+# Integration Notes & Gotchas (read before building)
+
+Practical guidance so the UI fits the real backend. If you're using an AI
+assistant to build the frontend, point it at this section.
+
+### 1. Use the REAL field names + value ranges (most common mistake)
+- `GPUConfig` is the 8 fields above (`n_clusters`, `cores_per_cluster`, `n_mem`,
+  `shmem_size`, `scheduler`, `num_sched_per_core`, `l1_sets`, `l2_sets`).
+  There is **no** `l1_size_kb`/`l2_size_mb`/`shmem_kb`, and scheduler is
+  `gto|lrr|two_level_active` (**not** `rrws`).
+- **Scale charts for real magnitudes:** `ipc` is in the **hundreds (~300–490)**,
+  `occupancy` ~**0.30**, hit rates ~**0.4–0.7**. (Don't design around the old
+  placeholder IPC of 1.4 — everything will look wrong.)
+- All rates are fractions 0–1 → `×100` for `%`.
+
+### 2. Config controls are discrete, not continuous
+Sliders/segmented controls must snap to the allowed values only:
+`n_clusters` 8/15/30/60 · `cores_per_cluster` 1/2/4 · `n_mem` 4/6/8/12 ·
+`shmem_size` 16384/32768/49152 · `num_sched_per_core` 1/2/4 ·
+`l1_sets` 16/32/64/128 · `l2_sets` 32/64/128 · `scheduler` gto/lrr/two_level_active.
+
+**Benchmark is dynamic — do NOT hardcode `dct8x8`.** Populate the benchmark
+selector from `GET /health` → `benchmarks` (array) and send the chosen value in
+the request body of `/experiments/run` and `/explore`. Today the list is
+`["dct8x8"]`; when the backend registers more, the UI picks them up with no
+frontend change.
+
+### 3. Two separate flows — build both
+- **Manual run:** ConfigPanel → `POST /experiments/run` → open
+  `EventSource('/experiments/{exp_id}/stream')` → render output + final stats.
+- **Autonomous exploration (headline):** goal text → `POST /explore` →
+  `EventSource('/explore/{session_id}/stream')` → drive the agent panel.
+
+### 4. Consuming SSE
+Use `EventSource`. Each message is a line `data: <json>`. Parse the JSON, switch
+on `.type`. The stream stays open until `complete` (runs) / `converged`
+(explore); buffered, so a late subscriber still gets all prior events. Handle
+`error` and `note` event types too.
+
+### 5. Agent reasoning is a COMPLETE block per event — animate client-side
+The `analysis` event delivers each agent's full `text` at once (not token by
+token). For a typewriter effect, **animate it on the client** — don't expect a
+per-token stream. Color each agent card by `agents.<name>.status`
+(`green|amber|red`).
+
+### 6. Don't miss the `recall` event
+Between `analysis` and `proposal` you may get
+`{ type:"recall", recalled:[{exp_id,text,score}] }` — the orchestrator's
+RedisVL semantic memory of similar past experiments. Nice UI moment:
+"recalled N relevant prior runs."
+
+### 7. `converged` is the finale
+`{ type:"converged", best_exp_id, pareto:[exp_id...], iterations }` — highlight
+`best_exp_id` and mark the `pareto` exp_ids on the IPC chart (Pareto frontier).
+
+### 8. Two data tiers — don't over-fetch
+History/table → light `SimStats` only. Fetch the heavy `SimReport`
+(`/experiments/{id}/details`) **only** when opening one experiment's deep-dive
+(the Nsight-style view). Mock it with `docs/sample_report.json`.
+
+### 9. Timing / loading states
+One simulation ≈ 8–20s; a full `/explore` ≈ minutes (several real sims). Design
+explicit streaming/loading states. For the live demo, coordinate on a
+pre-run/replay ("demo mode") so judges aren't waiting minutes.
+
+### 10. Experiments can fail
+`Experiment.status` is `"success"|"error"` (a config can fail the simulator).
+Render error runs gracefully (e.g., greyed row + the `error` string).
+
+### 11. CORS
+Backend allows `http://localhost:3000` and `127.0.0.1:3000`. On a different
+port, ask backend to add it.
+
+### 12. Run the backend without Docker (DEMO_MODE) — your test setup
+You don't have the GPGPU-Sim container, so run the backend in demo mode — it
+serves the **real API with the real shapes**, replaying captured sim data:
+```bash
+pip install -r backend/requirements.txt
+DEMO_MODE=1 DISABLE_REDIS=1 uvicorn backend.main:app --port 8000
+```
+- No Docker, no Redis needed. If `ANTHROPIC_API_KEY` is unset, agents return
+  canned (config-aware) analysis so `/explore` works fully offline; set the key
+  for live reasoning.
+- Sims are replayed but IPC responds to the config, so the exploration loop and
+  charts look real. Every endpoint (including SSE) behaves like production.
+- Then point the frontend at `http://localhost:8000`.
+
+### Build checklist
+- [ ] ConfigPanel emits a valid `GPUConfig` (discrete values, real scheduler enum)
+- [ ] Dashboard scales to real IPC/occupancy ranges; rates ×100 for %
+- [ ] Manual run via `/experiments/run` + `/stream`
+- [ ] Agent panel via `/explore` + `/stream`; cards colored by status; client-side typewriter
+- [ ] `recall`, `converged` (best + pareto), `error`/`note` handled
+- [ ] Deep-dive via `/experiments/{id}/details` (mock from sample_report.json)
+- [ ] Loading/streaming states for multi-second/minute operations
