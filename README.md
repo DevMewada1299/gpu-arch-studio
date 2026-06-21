@@ -150,6 +150,12 @@ python backend/fetch_agents.py     # prints the agent address + Agentverse inspe
    autonomous exploration and replies with the best config + reasoning.
    (Keep the backend running — the agent calls it over HTTP.)
 
+**Multi-agent (bonus):** `python backend/fetch_bureau.py` runs four uAgents in
+one Bureau (Orchestrator + Memory/Warp/Bottleneck). The Orchestrator delegates
+analysis to the three specialists over Fetch messages and synthesizes their
+verdicts — four Agentverse profiles + real agent-to-agent collaboration. Use
+this *or* the single agent above, not both at once.
+
 ### Try the API directly
 ```bash
 # autonomous exploration, streamed (SSE)

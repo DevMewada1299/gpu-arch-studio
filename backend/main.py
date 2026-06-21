@@ -40,7 +40,8 @@ try:
 except ImportError:
     pass
 
-monitoring.init_sentry()  # no-op unless SENTRY_DSN is set
+_sentry_on = monitoring.init_sentry()  # no-op unless SENTRY_DSN is set
+print(f"[sentry] {'enabled — sim + agent calls traced in Performance' if _sentry_on else 'disabled (set SENTRY_DSN to enable)'}")
 
 
 def _make_store():
