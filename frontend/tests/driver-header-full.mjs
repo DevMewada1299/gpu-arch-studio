@@ -1,0 +1,10 @@
+import { createRequire } from 'module';
+const require = createRequire('/Users/skanda/.npm/_npx/e41f203b7505f1fb/node_modules/');
+const { chromium } = require('playwright');
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1600, height: 200 }, deviceScaleFactor: 2 });
+await page.goto('http://localhost:3000', { waitUntil: 'networkidle' });
+await page.waitForTimeout(700);
+await page.screenshot({ path: '/tmp/header-full.png', clip: { x: 980, y: 0, width: 620, height: 64 } });
+await browser.close();
+console.log('done');
