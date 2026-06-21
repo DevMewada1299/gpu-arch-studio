@@ -4,7 +4,7 @@ import { mockHistory } from "../mocks";
 
 // Standalone default: the most recent completed experiment, so the headline
 // IPC aligns with the end of the trend line.
-const completedMock = mockHistory.filter((e) => e.status === "complete");
+const completedMock = mockHistory.filter((e) => e.status === "success");
 const defaultStats: SimStats = completedMock[completedMock.length - 1].stats;
 
 interface PerformanceDashboardProps {
@@ -31,7 +31,7 @@ export default function PerformanceDashboard({
   const ipcSeries =
     history?.map((s, i) => ({ exp: i + 1, ipc: s.ipc })) ??
     mockHistory
-      .filter((e) => e.status === "complete")
+      .filter((e) => e.status === "success")
       .map((e, i) => ({ exp: i + 1, ipc: Number(e.stats.ipc.toFixed(1)) }));
 
   // Delta vs previous experiment.
@@ -92,11 +92,11 @@ export default function PerformanceDashboard({
             Occupancy
           </p>
           <span className="mt-2 text-3xl font-semibold text-neutral-900 font-metric leading-none">
-            {stats.occupancy.toFixed(1)}
+            {(stats.occupancy * 100).toFixed(1)}
             <span className="text-lg text-neutral-400">%</span>
           </span>
           <div className="mt-auto pt-5">
-            <MiniBar value={stats.occupancy} color="#6366f1" />
+            <MiniBar value={stats.occupancy * 100} color="#6366f1" />
           </div>
         </div>
 

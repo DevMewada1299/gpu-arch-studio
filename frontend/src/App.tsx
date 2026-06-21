@@ -14,9 +14,9 @@ export default function App() {
   const [config, setConfig] = useState<GPUConfig>(baselineConfig)
   const [benchmark, setBenchmark] = useState<Benchmark>("dct8x8")
   const [exploreRunId, setExploreRunId] = useState(0)
-  // Default to all idle containers selected for parallel exploration.
+  // Default to all idle (non-busy) containers selected for parallel exploration.
   const [containers, setContainers] = useState<string[]>(
-    mockContainers.filter((c) => c.status === "idle").map((c) => c.id)
+    mockContainers.filter((c) => !c.busy).map((c) => c.id)
   )
   // Presentational-only: controls the History slide-out drawer.
   const [historyOpen, setHistoryOpen] = useState(false)

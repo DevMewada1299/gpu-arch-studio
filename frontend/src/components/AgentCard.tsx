@@ -185,7 +185,7 @@ export default function AgentCard({
                 <ConfigRow k="SM Clusters" v={proposal.config.n_clusters} />
                 <ConfigRow k="L1 Sets" v={proposal.config.l1_sets} />
                 <ConfigRow k="Scheduler" v={SCHED_LABEL[proposal.config.scheduler]} />
-                <ConfigRow k="Sched / Core" v={proposal.config.schedulers_per_core} />
+                <ConfigRow k="Sched / Core" v={proposal.config.num_sched_per_core} />
                 <ConfigRow k="Mem Ctrl" v={proposal.config.n_mem} />
                 <ConfigRow k="L2 Sets" v={proposal.config.l2_sets} />
               </div>

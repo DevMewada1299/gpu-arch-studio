@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Check } from "lucide-react";
+import { Check, Microscope, AlertTriangle } from "lucide-react";
 import CompareModal from "./CompareModal";
+import DeepDive from "./DeepDive";
 import type { Experiment, GPUConfig } from "../types";
-import { mockHistory } from "../mocks";
+import { mockHistory, mockReport } from "../mocks";
 
 const SCHED_LABEL: Record<GPUConfig["scheduler"], string> = {
   gto: "GTO",
@@ -36,9 +37,10 @@ export default function ExperimentHistory({
 }: ExperimentHistoryProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [comparing, setComparing] = useState(false);
+  const [detailExp, setDetailExp] = useState<Experiment | null>(null);
 
   const toggle = (exp: Experiment) => {
-    if (exp.status !== "complete") return; // can't compare an incomplete run
+    if (exp.status !== "success") return; // only successful runs are comparable
     setSelected((prev) => {
       if (prev.includes(exp.exp_id)) return prev.filter((id) => id !== exp.exp_id);
       if (prev.length >= 2) return [prev[1], exp.exp_id]; // keep most recent two
@@ -57,46 +59,61 @@ export default function ExperimentHistory({
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
         {experiments.map((exp) => {
           const isSelected = selected.includes(exp.exp_id);
-          const isRunning = exp.status === "running";
+          const isError = exp.status === "error";
           return (
-            <button
+            <div
               key={exp.exp_id}
               onClick={() => toggle(exp)}
-              disabled={isRunning}
-              className={`w-full text-left rounded-2xl border p-4 transition-all duration-200 ${
-                isRunning
-                  ? "border-neutral-200/70 bg-white opacity-60 cursor-default"
+              className={`w-full rounded-2xl border p-4 transition-all duration-200 ${
+                isError
+                  ? "border-rose-200/70 bg-rose-50/30 cursor-default"
                   : isSelected
-                  ? "border-indigo-300 bg-indigo-50/40 shadow-sm"
-                  : "border-neutral-200/80 bg-white hover:border-neutral-300 hover:shadow-sm"
+                  ? "border-indigo-300 bg-indigo-50/40 shadow-sm cursor-pointer"
+                  : "border-neutral-200/80 bg-white hover:border-neutral-300 hover:shadow-sm cursor-pointer"
               }`}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2.5">
-                  <span
-                    className={`inline-flex items-center justify-center w-4 h-4 rounded-md border flex-none transition-colors ${
-                      isSelected
-                        ? "bg-indigo-600 border-indigo-600 text-white"
-                        : "border-neutral-300"
-                    }`}
-                  >
-                    {isSelected && <Check size={11} strokeWidth={3} />}
-                  </span>
+                  {!isError && (
+                    <span
+                      className={`inline-flex items-center justify-center w-4 h-4 rounded-md border flex-none transition-colors ${
+                        isSelected
+                          ? "bg-indigo-600 border-indigo-600 text-white"
+                          : "border-neutral-300"
+                      }`}
+                    >
+                      {isSelected && <Check size={11} strokeWidth={3} />}
+                    </span>
+                  )}
                   <span className="text-[13px] font-semibold text-neutral-900">
                     {exp.exp_id}
                   </span>
                 </div>
-                {isRunning ? (
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-600">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 thinking-dot" />
-                    Running
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-600">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    Complete
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {!isError && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDetailExp(exp);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] font-medium text-neutral-600 hover:border-indigo-300 hover:text-indigo-600 transition-colors"
+                    >
+                      <Microscope size={12} />
+                      Deep dive
+                    </button>
+                  )}
+                  {isError ? (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-rose-500">
+                      <AlertTriangle size={12} />
+                      Failed
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-600">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      Complete
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Config chips */}
@@ -107,23 +124,18 @@ export default function ExperimentHistory({
                 <Chip>{SCHED_LABEL[exp.config.scheduler]}</Chip>
               </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-4 gap-2">
-                <Stat label="IPC" value={isRunning ? "—" : exp.stats.ipc.toFixed(1)} />
-                <Stat
-                  label="L1 Hit"
-                  value={isRunning ? "—" : `${(exp.stats.l1_hit_rate * 100).toFixed(0)}%`}
-                />
-                <Stat
-                  label="L2 Hit"
-                  value={isRunning ? "—" : `${(exp.stats.l2_hit_rate * 100).toFixed(0)}%`}
-                />
-                <Stat
-                  label="Occ"
-                  value={isRunning ? "—" : `${exp.stats.occupancy.toFixed(0)}%`}
-                />
-              </div>
-            </button>
+              {/* Stats — or the error message */}
+              {isError ? (
+                <p className="text-[12px] text-rose-600/90 leading-relaxed">{exp.error}</p>
+              ) : (
+                <div className="grid grid-cols-4 gap-2">
+                  <Stat label="IPC" value={exp.stats.ipc.toFixed(1)} />
+                  <Stat label="L1 Hit" value={`${(exp.stats.l1_hit_rate * 100).toFixed(0)}%`} />
+                  <Stat label="L2 Hit" value={`${(exp.stats.l2_hit_rate * 100).toFixed(0)}%`} />
+                  <Stat label="Occ" value={`${(exp.stats.occupancy * 100).toFixed(0)}%`} />
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
@@ -163,6 +175,14 @@ export default function ExperimentHistory({
           a={selectedExps[0]}
           b={selectedExps[1]}
           onClose={() => setComparing(false)}
+        />
+      )}
+
+      {detailExp && (
+        <DeepDive
+          experiment={detailExp}
+          report={mockReport}
+          onClose={() => setDetailExp(null)}
         />
       )}
     </div>

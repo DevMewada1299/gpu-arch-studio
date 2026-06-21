@@ -29,7 +29,7 @@ function configRows(c: GPUConfig): { key: string; label: string; value: string }
   return [
     { key: "n_clusters", label: "SM Clusters", value: String(c.n_clusters) },
     { key: "cores_per_cluster", label: "Cores / Cluster", value: String(c.cores_per_cluster) },
-    { key: "schedulers_per_core", label: "Schedulers / Core", value: String(c.schedulers_per_core) },
+    { key: "num_sched_per_core", label: "Schedulers / Core", value: String(c.num_sched_per_core) },
     { key: "scheduler", label: "Warp Scheduler", value: SCHED_LABEL[c.scheduler] },
     { key: "l1_sets", label: "L1 Cache", value: `${c.l1_sets} sets · ${(c.l1_sets * 128 * 4) / 1024} KB` },
     { key: "l2_sets", label: "L2 Cache", value: `${c.l2_sets} sets · ${(c.l2_sets * 128 * 8) / 1024} KB` },
@@ -48,8 +48,8 @@ function explainDelta(a: Experiment, b: Experiment): string {
     diffs.push(`SM clusters ${ca.n_clusters}→${cb.n_clusters}`);
   if (ca.scheduler !== cb.scheduler)
     diffs.push(`scheduler ${SCHED_LABEL[ca.scheduler]}→${SCHED_LABEL[cb.scheduler]}`);
-  if (ca.schedulers_per_core !== cb.schedulers_per_core)
-    diffs.push(`schedulers/core ${ca.schedulers_per_core}→${cb.schedulers_per_core}`);
+  if (ca.num_sched_per_core !== cb.num_sched_per_core)
+    diffs.push(`schedulers/core ${ca.num_sched_per_core}→${cb.num_sched_per_core}`);
   if (ca.n_mem !== cb.n_mem)
     diffs.push(`mem controllers ${ca.n_mem}→${cb.n_mem}`);
 
@@ -107,7 +107,7 @@ export default function CompareModal({ a, b, onClose }: CompareModalProps) {
   const chartData = [
     { metric: "L1 Hit", [a.exp_id]: +(a.stats.l1_hit_rate * 100).toFixed(1), [b.exp_id]: +(b.stats.l1_hit_rate * 100).toFixed(1) },
     { metric: "L2 Hit", [a.exp_id]: +(a.stats.l2_hit_rate * 100).toFixed(1), [b.exp_id]: +(b.stats.l2_hit_rate * 100).toFixed(1) },
-    { metric: "Occupancy", [a.exp_id]: +a.stats.occupancy.toFixed(1), [b.exp_id]: +b.stats.occupancy.toFixed(1) },
+    { metric: "Occupancy", [a.exp_id]: +(a.stats.occupancy * 100).toFixed(1), [b.exp_id]: +(b.stats.occupancy * 100).toFixed(1) },
   ];
 
   const rowsA = configRows(a.config);

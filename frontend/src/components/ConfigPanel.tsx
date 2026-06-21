@@ -146,8 +146,8 @@ export default function ConfigPanel({
         <Field label="Schedulers / Core">
           <Segmented
             options={SCHEDULERS_PER_CORE.map((v) => ({ value: v, label: String(v) }))}
-            value={config.schedulers_per_core}
-            onChange={(v) => set("schedulers_per_core", v)}
+            value={config.num_sched_per_core}
+            onChange={(v) => set("num_sched_per_core", v)}
           />
         </Field>
         <Field label="Warp Scheduler">

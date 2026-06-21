@@ -1,0 +1,341 @@
+{
+  "kernels": [
+    {
+      "name": "_Z14CUDAkernel2DCTPfi",
+      "launch_uid": 1,
+      "cycles": 28181,
+      "insn": 7438336,
+      "ipc": 263.9486,
+      "occupancy": 0.302
+    },
+    {
+      "name": "_Z27CUDAkernelQuantizationFloatPfi",
+      "launch_uid": 2,
+      "cycles": 31174,
+      "insn": 11272192,
+      "ipc": 361.5895,
+      "occupancy": 0.3241
+    }
+  ],
+  "per_sm_l1d": [
+    {
+      "core": 0,
+      "accesses": 5488,
+      "misses": 2956,
+      "miss_rate": 0.539,
+      "reservation_fails": 594
+    },
+    {
+      "core": 1,
+      "accesses": 5424,
+      "misses": 2915,
+      "miss_rate": 0.537,
+      "reservation_fails": 318
+    },
+    {
+      "core": 2,
+      "accesses": 5472,
+      "misses": 2929,
+      "miss_rate": 0.535,
+      "reservation_fails": 626
+    },
+    {
+      "core": 3,
+      "accesses": 5536,
+      "misses": 3005,
+      "miss_rate": 0.543,
+      "reservation_fails": 437
+    },
+    {
+      "core": 4,
+      "accesses": 5520,
+      "misses": 3074,
+      "miss_rate": 0.557,
+      "reservation_fails": 488
+    },
+    {
+      "core": 5,
+      "accesses": 5456,
+      "misses": 2992,
+      "miss_rate": 0.548,
+      "reservation_fails": 715
+    },
+    {
+      "core": 6,
+      "accesses": 5488,
+      "misses": 2940,
+      "miss_rate": 0.536,
+      "reservation_fails": 391
+    },
+    {
+      "core": 7,
+      "accesses": 5488,
+      "misses": 3020,
+      "miss_rate": 0.55,
+      "reservation_fails": 497
+    },
+    {
+      "core": 8,
+      "accesses": 5488,
+      "misses": 3019,
+      "miss_rate": 0.55,
+      "reservation_fails": 899
+    },
+    {
+      "core": 9,
+      "accesses": 5440,
+      "misses": 2932,
+      "miss_rate": 0.539,
+      "reservation_fails": 670
+    },
+    {
+      "core": 10,
+      "accesses": 5488,
+      "misses": 3000,
+      "miss_rate": 0.547,
+      "reservation_fails": 897
+    },
+    {
+      "core": 11,
+      "accesses": 5424,
+      "misses": 2916,
+      "miss_rate": 0.538,
+      "reservation_fails": 414
+    },
+    {
+      "core": 12,
+      "accesses": 5392,
+      "misses": 2928,
+      "miss_rate": 0.543,
+      "reservation_fails": 943
+    },
+    {
+      "core": 13,
+      "accesses": 5424,
+      "misses": 2914,
+      "miss_rate": 0.537,
+      "reservation_fails": 655
+    },
+    {
+      "core": 14,
+      "accesses": 5392,
+      "misses": 2840,
+      "miss_rate": 0.527,
+      "reservation_fails": 646
+    }
+  ],
+  "cache_by_type": {
+    "GLOBAL_ACC_R": {
+      "hit": 0,
+      "miss": 37792
+    },
+    "GLOBAL_ACC_W": {
+      "hit": 34372,
+      "miss": 6588
+    },
+    "LOCAL_ACC_R": {
+      "hit": 0,
+      "miss": 0
+    },
+    "LOCAL_ACC_W": {
+      "hit": 0,
+      "miss": 0
+    },
+    "CONST_ACC_R": {
+      "hit": 33072,
+      "miss": 720
+    },
+    "TEXTURE_ACC_R": {
+      "hit": 0,
+      "miss": 0
+    },
+    "INST_ACC_R": {
+      "hit": 292171,
+      "miss": 4789
+    }
+  },
+  "traffic_coretomem": {
+    "CONST_ACC_R": 480,
+    "GLOBAL_ACC_R": 302336,
+    "GLOBAL_ACC_W": 2424832,
+    "INST_ACC_R": 2400
+  },
+  "traffic_memtocore": {
+    "CONST_ACC_R": 4800,
+    "GLOBAL_ACC_R": 6046720,
+    "GLOBAL_ACC_W": 524288,
+    "INST_ACC_R": 48000
+  },
+  "warp": {
+    "stall": 17420,
+    "idle": 150644,
+    "scoreboard": 995192,
+    "issued": 588096,
+    "single_issue": 592896,
+    "dual_issue": 0
+  },
+  "latency": {
+    "max_mf": 693,
+    "avg_mf": 264,
+    "max_icnt2mem": 503,
+    "max_mrq": 350,
+    "max_icnt2sh": 213,
+    "avg_icnt2mem": 17,
+    "avg_mrq": 23,
+    "avg_icnt2sh": 27,
+    "mf_lat_table": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      96298,
+      118830,
+      1696,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "mrq_lat_table": [
+      18101,
+      9162,
+      9671,
+      7614,
+      12891,
+      10047,
+      6569,
+      1728,
+      81,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "icnt2mem_lat_table": [
+      0,
+      0,
+      216,
+      110,
+      19,
+      74983,
+      2391,
+      1085,
+      308,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "icnt2sh_lat_table": [
+      0,
+      0,
+      51735,
+      52213,
+      54882,
+      35586,
+      18901,
+      3507,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "dram": {
+    "row_buffer_locality": 0.9547,
+    "bank_level_parallelism": 2.4723,
+    "bw_util": 0.3487,
+    "dram_eff": 0.6302,
+    "bottlenecks": {
+      "rcd": 17039,
+      "rcdwr": 8788,
+      "wtr": 18229,
+      "rtw": 56907,
+      "ccdl": 78524
+    }
+  },
+  "instr_mix": {
+    "load": 524288,
+    "store": 524288,
+    "shmem": 1572864,
+    "const_mem": 491520,
+    "param_mem": 589824,
+    "tex": 0,
+    "mem_read_global": 37792,
+    "mem_write_global": 40960,
+    "shmem_bkconflict": 0,
+    "l1cache_bkconflict": 486
+  },
+  "stalls": {
+    "gl_mem_resource": 486,
+    "gl_mem_coal": 49152,
+    "gl_mem_data_port": 0,
+    "c_mem_resource": 0,
+    "s_mem_bkconf": 0,
+    "icnt2sh": 6131,
+    "reg_bank_conflict": 0
+  }
+}

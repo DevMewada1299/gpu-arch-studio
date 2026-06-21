@@ -35,9 +35,9 @@ export default function ContainerSelector({
     );
   };
 
-  const idleCount = containers.filter((c) => c.status === "idle").length;
+  const idleCount = containers.filter((c) => !c.busy).length;
   const selectIdle = () =>
-    onChange(containers.filter((c) => c.status === "idle").map((c) => c.id));
+    onChange(containers.filter((c) => !c.busy).map((c) => c.id));
 
   const n = selected.length;
 
@@ -69,7 +69,7 @@ export default function ContainerSelector({
           <div className="py-1.5 max-h-60 overflow-y-auto">
             {containers.map((c) => {
               const isSelected = selected.includes(c.id);
-              const busy = c.status === "busy";
+              const busy = c.busy;
               return (
                 <button
                   key={c.id}
@@ -98,7 +98,7 @@ export default function ContainerSelector({
                         busy ? "bg-amber-500" : "bg-emerald-500"
                       }`}
                     />
-                    {c.status}
+                    {busy ? "busy" : "idle"}
                   </span>
                 </button>
               );

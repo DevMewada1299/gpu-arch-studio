@@ -73,7 +73,7 @@ const PROPOSED_CONFIG: GPUConfig = {
   scheduler: "lrr",
   n_mem: 8,
   shmem_size: 49152,
-  schedulers_per_core: 4,
+  num_sched_per_core: 4,
 };
 
 // Tokenize keeping trailing spaces so reassembly is exact.
