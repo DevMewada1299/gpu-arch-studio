@@ -16,6 +16,7 @@ import json
 import os
 from typing import List, Optional
 
+from . import monitoring
 from .models import Experiment, SimReport
 
 INDEX_KEY = "experiments:index"
@@ -64,15 +65,26 @@ class RedisExperimentStore:
             "config": json.dumps(exp.config.to_dict()),
             "stats": json.dumps(exp.stats.to_dict()),
         }
-        self.client.hset(_key(exp.exp_id), mapping=mapping)
-        self.client.zadd(INDEX_KEY, {exp.exp_id: exp.timestamp})
+        try:
+            self.client.hset(_key(exp.exp_id), mapping=mapping)
+            self.client.zadd(INDEX_KEY, {exp.exp_id: exp.timestamp})
+        except Exception as exc:  # noqa: BLE001 - Redis flake must not crash a run
+            monitoring.capture_exception(exc, where="redis.save", exp_id=exp.exp_id)
 
     def get(self, exp_id: str) -> Optional[Experiment]:
-        d = self.client.hgetall(_key(exp_id))
-        return self._from_hash(d) if d else None
+        try:
+            d = self.client.hgetall(_key(exp_id))
+            return self._from_hash(d) if d else None
+        except Exception as exc:  # noqa: BLE001
+            monitoring.capture_exception(exc, where="redis.get", exp_id=exp_id)
+            return None
 
     def get_all(self) -> List[Experiment]:
-        ids = self.client.zrange(INDEX_KEY, 0, -1)
+        try:
+            ids = self.client.zrange(INDEX_KEY, 0, -1)
+        except Exception as exc:  # noqa: BLE001 - degrade to empty, don't 500
+            monitoring.capture_exception(exc, where="redis.get_all")
+            return []
         out = []
         for exp_id in ids:
             exp = self.get(exp_id)
@@ -81,12 +93,18 @@ class RedisExperimentStore:
         return out
 
     def save_report(self, exp_id: str, report: SimReport) -> None:
-        # heavy tier kept under its own key so history payloads stay small
-        self.client.set(_report_key(exp_id), json.dumps(report.to_dict()))
+        try:
+            self.client.set(_report_key(exp_id), json.dumps(report.to_dict()))
+        except Exception as exc:  # noqa: BLE001
+            monitoring.capture_exception(exc, where="redis.save_report", exp_id=exp_id)
 
     def get_report(self, exp_id: str) -> Optional[SimReport]:
-        raw = self.client.get(_report_key(exp_id))
-        return SimReport.from_dict(json.loads(raw)) if raw else None
+        try:
+            raw = self.client.get(_report_key(exp_id))
+            return SimReport.from_dict(json.loads(raw)) if raw else None
+        except Exception as exc:  # noqa: BLE001
+            monitoring.capture_exception(exc, where="redis.get_report", exp_id=exp_id)
+            return None
 
     @staticmethod
     def _from_hash(d: dict) -> Experiment:
