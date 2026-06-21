@@ -50,9 +50,15 @@ one accent color, good typography. Not gray-on-gray default.
 ### Step 2 — ConfigPanel (2 hrs)
 - A slider or segmented control per parameter in CLAUDE.md
 - Use the discrete allowed values (not continuous sliders — these are
-  enumerated options: L1 is 16/32/48/64/128, not anything in between)
-- A benchmark dropdown (GEMM, vectoradd, BFS, reduction)
-- Reads/writes a `GPUConfig` object (type in CLAUDE.md)
+  enumerated options). The 8 real params and their allowed values are in
+  CLAUDE.md's config table, e.g. L1 sets = 16/32/64/128, scheduler =
+  gto/lrr/two_level_active.
+- A benchmark dropdown — for now just **DCT8x8 (JPEG)**, our only working
+  benchmark (a second one is optional/stretch). The earlier GEMM/vectoradd/BFS
+  list was a placeholder.
+- Reads/writes a `GPUConfig` object (type in CLAUDE.md — the REAL params:
+  n_clusters, cores_per_cluster, n_mem, shmem_size, scheduler,
+  num_sched_per_core, l1_sets, l2_sets)
 - The RUN button calls `POST /experiments/run`
 
 Build with MOCK data first — hardcode a config, log it on RUN. Don't wait
@@ -120,18 +126,32 @@ Start Claude Code in `/frontend`:
 ## Mock Data To Develop Against
 
 Put this in `src/mocks.ts` so you can build the whole UI before the backend
-is ready:
+is ready. These use the REAL GPUConfig / SimStats fields (see CLAUDE.md) and
+realistic JPEG numbers (baseline IPC ~315, 30-cluster ~457 — measured):
 
 ```typescript
 export const mockStats: SimStats = {
-  ipc: 1.42, l1_hit_rate: 0.41, l2_hit_rate: 0.67,
-  dram_stalls: 84210, occupancy: 0.78, total_insn: 2840000
+  ipc: 315.23, total_insn: 7569408, total_cycles: 24011,
+  occupancy: 0.297, l1_hit_rate: 0.385, l2_hit_rate: 0.506,
+  l1i_hit_rate: 0.97, dram_stalls: 532, shmem_stalls: 160,
+  l2_bw: 54.09, sim_time_sec: 8,
+};
+
+const baseConfig: GPUConfig = {
+  n_clusters: 15, cores_per_cluster: 1, n_mem: 6, shmem_size: 49152,
+  scheduler: "gto", num_sched_per_core: 2, l1_sets: 32, l2_sets: 64,
 };
 
 export const mockHistory: Experiment[] = [
-  { exp_id: "1", config: {...}, stats: {...ipc: 1.4}, benchmark: "gemm", ... },
-  { exp_id: "2", config: {...}, stats: {...ipc: 2.1}, benchmark: "gemm", ... },
-  { exp_id: "3", config: {...}, stats: {...ipc: 2.8}, benchmark: "gemm", ... },
+  { exp_id: "1", config: baseConfig,
+    stats: {...mockStats, ipc: 315.23},
+    benchmark: "dct8x8", container_id: "relaxed_shaw", timestamp: 1 },
+  { exp_id: "2", config: {...baseConfig, n_clusters: 30},
+    stats: {...mockStats, ipc: 456.58},
+    benchmark: "dct8x8", container_id: "relaxed_shaw", timestamp: 2 },
+  { exp_id: "3", config: {...baseConfig, n_clusters: 30, l1_sets: 64},
+    stats: {...mockStats, ipc: 470.0},
+    benchmark: "dct8x8", container_id: "relaxed_shaw", timestamp: 3 },
 ];
 ```
 
