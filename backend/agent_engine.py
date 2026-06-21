@@ -36,6 +36,44 @@ _STATUS_RE = re.compile(r"STATUS:\s*(GREEN|AMBER|RED)", re.IGNORECASE)
 _client = None
 
 
+def _demo_no_key() -> bool:
+    """In DEMO_MODE with no API key, agents return canned (but config-aware)
+    analysis so the whole loop runs offline — for frontend/demo without keys."""
+    return os.environ.get("DEMO_MODE") == "1" and not os.environ.get("ANTHROPIC_API_KEY")
+
+
+def _demo_specialist_text(agent: str, stats: SimStats, config: GPUConfig) -> str:
+    if agent == "memory":
+        return (f"L2 hit {stats.l2_hit_rate} with only {stats.dram_stalls} DRAM-full "
+                f"stalls at {config.n_clusters} clusters — bandwidth isn't the limiter; "
+                f"L1 miss traffic is low-reuse streaming. STATUS: AMBER  [demo]")
+    if agent == "warp":
+        return (f"Occupancy {stats.occupancy} yet IPC {stats.ipc} — latency-tolerant "
+                f"kernel; the {config.scheduler} scheduler suits the DCT tiles. "
+                f"STATUS: AMBER  [demo]")
+    return ("Compute-bound: DRAM stalls are a small fraction of cycles and L2 BW is "
+            "far from saturated; IPC scales with SM count. Highest leverage: more "
+            "clusters. STATUS: AMBER  [demo]")
+
+
+def _demo_decision(history: List[dict], constraints: Optional[dict]) -> OrchestratorDecision:
+    maxc = (constraints or {}).get("max_n_clusters", 60)
+    last = history[-1]["experiment"].config
+    best = max(history, key=lambda h: h["experiment"].stats.ipc or 0)["experiment"]
+    nxt = next((s for s in (8, 15, 30, 60) if s > last.n_clusters and s <= maxc), None)
+    if nxt is None:
+        return OrchestratorDecision(
+            reasoning="[demo] IPC plateaued within the constraints — converged.",
+            next_config=None, converged=True, best_exp_id=best.exp_id,
+            best_reason=f"highest IPC {best.stats.ipc}")
+    cfg = GPUConfig.from_dict({**last.to_dict(), "n_clusters": nxt})
+    return OrchestratorDecision(
+        reasoning=f"[demo] Compute-bound; scaling clusters {last.n_clusters}->{nxt} "
+                  f"to raise IPC (others fixed for attributability).",
+        next_config=cfg, converged=False, best_exp_id=best.exp_id,
+        best_reason=f"highest IPC so far {best.stats.ipc}")
+
+
 def _get_client():
     global _client
     if _client is None:
@@ -80,6 +118,12 @@ def run_specialist(
     """Run one specialist agent on an experiment and return its analysis."""
     if agent not in SPECIALISTS:
         raise ValueError(f"unknown specialist {agent!r}; have {SPECIALISTS}")
+
+    if _demo_no_key():
+        txt = _demo_specialist_text(agent, stats, config)
+        if on_text:
+            on_text(txt)
+        return AgentOutput(agent=agent, text=txt, status=_parse_status(txt))
 
     system = _load_prompt(agent)
     user = _stats_block(stats, config, benchmark)
@@ -227,6 +271,9 @@ def propose_next(
     semantically-similar past experiments from agent memory (RedisVL) to ground
     the proposal in prior experience. Uses Sonnet 4.6 with adaptive thinking.
     """
+    if _demo_no_key():
+        return _demo_decision(history, constraints)
+
     with open(os.path.join(PROMPT_DIR, "orchestrator.md")) as f:
         system = f.read()
 

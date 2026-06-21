@@ -78,6 +78,22 @@ uvicorn backend.main:app --port 8000
 - On a restricted network (Redis port blocked), start with
   `DISABLE_REDIS=1 uvicorn backend.main:app --port 8000` to force in-memory.
 
+### Run without Docker (DEMO_MODE) — for frontend dev & fast demos
+No GPGPU-Sim container? Run the **real API** with replayed simulator data:
+```bash
+DEMO_MODE=1 DISABLE_REDIS=1 uvicorn backend.main:app --port 8000
+```
+- Sims are **replayed** from captured real output (no Docker), with IPC that
+  still responds to the config so exploration looks real.
+- `DISABLE_REDIS=1` → in-memory store (no Redis needed).
+- If `ANTHROPIC_API_KEY` is **unset**, the agents return canned (config-aware)
+  analysis, so `/explore` runs **end-to-end with zero external dependencies**.
+  Set the key to get live Claude reasoning instead.
+
+Every endpoint behaves identically to production (same shapes, same SSE) — the
+frontend can build and test against the real contract. Also the fast path for
+judging (no waiting on real simulations).
+
 ### 2. Try the autonomous loop directly (no agent/UI needed)
 ```bash
 # one experiment end-to-end

@@ -199,7 +199,12 @@ Sliders/segmented controls must snap to the allowed values only:
 `n_clusters` 8/15/30/60 · `cores_per_cluster` 1/2/4 · `n_mem` 4/6/8/12 ·
 `shmem_size` 16384/32768/49152 · `num_sched_per_core` 1/2/4 ·
 `l1_sets` 16/32/64/128 · `l2_sets` 32/64/128 · `scheduler` gto/lrr/two_level_active.
-Benchmark is **`dct8x8`** only.
+
+**Benchmark is dynamic — do NOT hardcode `dct8x8`.** Populate the benchmark
+selector from `GET /health` → `benchmarks` (array) and send the chosen value in
+the request body of `/experiments/run` and `/explore`. Today the list is
+`["dct8x8"]`; when the backend registers more, the UI picks them up with no
+frontend change.
 
 ### 3. Two separate flows — build both
 - **Manual run:** ConfigPanel → `POST /experiments/run` → open
@@ -246,6 +251,20 @@ Render error runs gracefully (e.g., greyed row + the `error` string).
 ### 11. CORS
 Backend allows `http://localhost:3000` and `127.0.0.1:3000`. On a different
 port, ask backend to add it.
+
+### 12. Run the backend without Docker (DEMO_MODE) — your test setup
+You don't have the GPGPU-Sim container, so run the backend in demo mode — it
+serves the **real API with the real shapes**, replaying captured sim data:
+```bash
+pip install -r backend/requirements.txt
+DEMO_MODE=1 DISABLE_REDIS=1 uvicorn backend.main:app --port 8000
+```
+- No Docker, no Redis needed. If `ANTHROPIC_API_KEY` is unset, agents return
+  canned (config-aware) analysis so `/explore` works fully offline; set the key
+  for live reasoning.
+- Sims are replayed but IPC responds to the config, so the exploration loop and
+  charts look real. Every endpoint (including SSE) behaves like production.
+- Then point the frontend at `http://localhost:8000`.
 
 ### Build checklist
 - [ ] ConfigPanel emits a valid `GPUConfig` (discrete values, real scheduler enum)
