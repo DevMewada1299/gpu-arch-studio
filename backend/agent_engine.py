@@ -22,6 +22,7 @@ import os
 import re
 from typing import Callable, Dict, List, Optional
 
+from . import monitoring
 from .models import AgentOutput, GPUConfig, OrchestratorDecision, SimStats
 
 PROMPT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "agents")
@@ -87,20 +88,25 @@ def run_specialist(
 
     client = _get_client()
     text = ""
-    if on_text is not None:
-        with client.messages.stream(
-            model=SPECIALIST_MODEL, max_tokens=600, system=system,
-            messages=[{"role": "user", "content": user}],
-        ) as stream:
-            for chunk in stream.text_stream:
-                text += chunk
-                on_text(chunk)
-    else:
-        resp = client.messages.create(
-            model=SPECIALIST_MODEL, max_tokens=600, system=system,
-            messages=[{"role": "user", "content": user}],
-        )
-        text = "".join(b.text for b in resp.content if b.type == "text")
+    with monitoring.transaction(f"agent:{agent}", "agent.analyze", model=SPECIALIST_MODEL):
+        try:
+            if on_text is not None:
+                with client.messages.stream(
+                    model=SPECIALIST_MODEL, max_tokens=600, system=system,
+                    messages=[{"role": "user", "content": user}],
+                ) as stream:
+                    for chunk in stream.text_stream:
+                        text += chunk
+                        on_text(chunk)
+            else:
+                resp = client.messages.create(
+                    model=SPECIALIST_MODEL, max_tokens=600, system=system,
+                    messages=[{"role": "user", "content": user}],
+                )
+                text = "".join(b.text for b in resp.content if b.type == "text")
+        except Exception as exc:  # rate limit / API error — reliability of the agent layer
+            monitoring.capture_exception(exc, agent=agent, model=SPECIALIST_MODEL)
+            raise
 
     return AgentOutput(agent=agent, text=text.strip(), status=_parse_status(text))
 
@@ -255,13 +261,19 @@ def propose_next(
         messages=[{"role": "user", "content": user}],
     )
     text = ""
-    if on_text is not None:
-        with client.messages.stream(**kwargs) as stream:
-            for chunk in stream.text_stream:
-                text += chunk
-                on_text(chunk)
-    else:
-        resp = client.messages.create(**kwargs)
-        text = "".join(b.text for b in resp.content if b.type == "text")
+    with monitoring.transaction("agent:orchestrator", "agent.orchestrate",
+                                model=ORCHESTRATOR_MODEL):
+        try:
+            if on_text is not None:
+                with client.messages.stream(**kwargs) as stream:
+                    for chunk in stream.text_stream:
+                        text += chunk
+                        on_text(chunk)
+            else:
+                resp = client.messages.create(**kwargs)
+                text = "".join(b.text for b in resp.content if b.type == "text")
+        except Exception as exc:  # rate limit / API error
+            monitoring.capture_exception(exc, agent="orchestrator", model=ORCHESTRATOR_MODEL)
+            raise
 
     return _parse_decision(text)
