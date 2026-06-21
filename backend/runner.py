@@ -23,6 +23,7 @@ from typing import Callable, Optional, Union
 from . import docker_manager, monitoring
 from .config_generator import generate_files
 from .models import Experiment, GPUConfig, SimStats
+from .report_parser import parse_report
 from .stats_parser import is_success, parse_stats
 from .store import ExperimentStore
 
@@ -122,7 +123,12 @@ def run_experiment(
         return _build("error", SimStats(), f"{type(exc).__name__}: {exc}", None)
 
     stats = parse_stats(output)
+    report = parse_report(output)  # rich tier for the deep-dive view
     log_path = _archive(exp_id, files, output) if save_artifacts else None
+    if save_artifacts:
+        _archive_report(exp_id, report)
+    if store is not None:
+        store.save_report(exp_id, report)
 
     if is_success(output) and (exit_code is None or exit_code == 0):
         return _build("success", stats, None, log_path)
@@ -145,3 +151,13 @@ def _archive(exp_id: str, files: dict, output: str) -> str:
     with open(log_path, "w") as f:
         f.write(output)
     return log_path
+
+
+def _archive_report(exp_id: str, report) -> None:
+    """Save the structured rich report alongside the raw log."""
+    import json
+
+    exp_dir = os.path.join(EXPERIMENTS_DIR, exp_id)
+    os.makedirs(exp_dir, exist_ok=True)
+    with open(os.path.join(exp_dir, "report.json"), "w") as f:
+        json.dump(report.to_dict(), f, indent=2)

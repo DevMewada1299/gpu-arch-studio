@@ -8,7 +8,7 @@ added later without reshaping data at each boundary.
 """
 
 from dataclasses import asdict, dataclass, field
-from typing import Optional
+from typing import Dict, List, Optional
 
 # config_generator validates allowed values; this enum is just for type clarity.
 Scheduler = str  # "gto" | "lrr" | "two_level_active"
@@ -53,6 +53,71 @@ class SimStats:
     @classmethod
     def from_dict(cls, d: dict) -> "SimStats":
         return cls(**{k: d[k] for k in d if k in cls.__dataclass_fields__})
+
+
+@dataclass
+class KernelStat:
+    """Per-kernel stats (DCT8x8 launches several kernels)."""
+    name: str
+    launch_uid: Optional[int] = None
+    cycles: Optional[int] = None
+    insn: Optional[int] = None
+    ipc: Optional[float] = None
+    occupancy: Optional[float] = None  # fraction 0-1
+
+
+@dataclass
+class CoreCacheStat:
+    """Per-SM L1D cache stats — drives the per-core heatmap."""
+    core: int
+    accesses: Optional[int] = None
+    misses: Optional[int] = None
+    miss_rate: Optional[float] = None
+    reservation_fails: Optional[int] = None
+
+
+@dataclass
+class SimReport:
+    """Rich, structured low-level profile for the Nsight-style deep-dive view.
+
+    This is the heavy tier: served on demand via /experiments/{id}/details and
+    stored with the experiment. The light SimStats stays the headline contract.
+    Flexible blocks are plain dicts so they serialize straight to JSON for the
+    frontend (heatmaps, traffic flow, stall attribution, latency curves).
+    """
+    kernels: List[KernelStat] = field(default_factory=list)
+    per_sm_l1d: List[CoreCacheStat] = field(default_factory=list)
+    # access_type -> {"hit": int, "miss": int}
+    cache_by_type: Dict[str, Dict[str, int]] = field(default_factory=dict)
+    # access_type -> bytes
+    traffic_coretomem: Dict[str, int] = field(default_factory=dict)
+    traffic_memtocore: Dict[str, int] = field(default_factory=dict)
+    warp: Dict[str, object] = field(default_factory=dict)      # stall/idle/scoreboard/issue
+    latency: Dict[str, object] = field(default_factory=dict)   # max/avg + histograms
+    dram: Dict[str, object] = field(default_factory=dict)      # locality/bw/eff + bottlenecks
+    instr_mix: Dict[str, int] = field(default_factory=dict)
+    stalls: Dict[str, int] = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "SimReport":
+        d = dict(d or {})
+        kernels = [KernelStat(**k) for k in d.get("kernels", [])]
+        per_sm = [CoreCacheStat(**c) for c in d.get("per_sm_l1d", [])]
+        return cls(
+            kernels=kernels,
+            per_sm_l1d=per_sm,
+            cache_by_type=d.get("cache_by_type", {}),
+            traffic_coretomem=d.get("traffic_coretomem", {}),
+            traffic_memtocore=d.get("traffic_memtocore", {}),
+            warp=d.get("warp", {}),
+            latency=d.get("latency", {}),
+            dram=d.get("dram", {}),
+            instr_mix=d.get("instr_mix", {}),
+            stalls=d.get("stalls", {}),
+        )
 
 
 @dataclass

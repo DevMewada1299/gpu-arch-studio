@@ -9,13 +9,16 @@ as the demo fallback if Redis is unavailable mid-demo.
 
 from typing import Dict, List, Optional, Protocol
 
-from .models import Experiment
+from .models import Experiment, SimReport
 
 
 class ExperimentStore(Protocol):
     def save(self, exp: Experiment) -> None: ...
     def get(self, exp_id: str) -> Optional[Experiment]: ...
     def get_all(self) -> List[Experiment]: ...
+    # rich profile (heavy tier) kept separate from the light Experiment record
+    def save_report(self, exp_id: str, report: SimReport) -> None: ...
+    def get_report(self, exp_id: str) -> Optional[SimReport]: ...
 
 
 class InMemoryExperimentStore:
@@ -23,6 +26,7 @@ class InMemoryExperimentStore:
 
     def __init__(self) -> None:
         self._data: Dict[str, Experiment] = {}
+        self._reports: Dict[str, SimReport] = {}
 
     def save(self, exp: Experiment) -> None:
         self._data[exp.exp_id] = exp
@@ -32,3 +36,9 @@ class InMemoryExperimentStore:
 
     def get_all(self) -> List[Experiment]:
         return list(self._data.values())
+
+    def save_report(self, exp_id: str, report: SimReport) -> None:
+        self._reports[exp_id] = report
+
+    def get_report(self, exp_id: str) -> Optional[SimReport]:
+        return self._reports.get(exp_id)
