@@ -18,7 +18,7 @@ Design choices that keep later layers additive (see the layering discussion):
 import os
 import time
 import uuid
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 from . import docker_manager, monitoring
 from .config_generator import generate_files
@@ -57,19 +57,28 @@ def run_experiment(
     container=None,
     store: Optional[ExperimentStore] = None,
     save_artifacts: bool = True,
+    exp_id: Optional[str] = None,
+    on_line: Optional[Callable[[str], None]] = None,
 ) -> Experiment:
     """Run one config on one container and return a (stored) Experiment.
 
     Never raises on a *simulation* failure — returns an Experiment with
     status="error". Infrastructure errors (no container, docker unreachable)
     are also captured and returned as status="error".
+
+    Args:
+        exp_id: pre-assigned id (the API assigns one so it can return it before
+            the run finishes); generated if None.
+        on_line: if given, the sim is streamed and this is called for each
+            output line (used by the SSE endpoint). Without it, output is
+            captured in one shot (and the exit code checked).
     """
     if isinstance(config, dict):
         config = GPUConfig.from_dict(config)
     if benchmark not in BENCHMARKS:
         raise ValueError(f"unknown benchmark {benchmark!r}; have {list(BENCHMARKS)}")
 
-    exp_id = uuid.uuid4().hex[:8]
+    exp_id = exp_id or uuid.uuid4().hex[:8]
     timestamp = time.time()
     bench = BENCHMARKS[benchmark]
     container_id = ""
@@ -90,14 +99,24 @@ def run_experiment(
             store.save(exp)
         return exp
 
+    exit_code: Optional[int] = None
     try:
         container_id = _resolve_target_container(container)
         files = generate_files(config.to_dict())
-
         docker_manager.put_files(container_id, bench["dir"], files)
-        exit_code, output = docker_manager.exec_in_container(
-            container_id, bench["cmd"], workdir=bench["dir"]
-        )
+
+        if on_line is not None:
+            lines = []
+            for line in docker_manager.stream_in_container(
+                container_id, bench["cmd"], workdir=bench["dir"]
+            ):
+                lines.append(line)
+                on_line(line)
+            output = "\n".join(lines)  # exit_code stays None (not available when streaming)
+        else:
+            exit_code, output = docker_manager.exec_in_container(
+                container_id, bench["cmd"], workdir=bench["dir"]
+            )
     except Exception as exc:  # infrastructure failure (docker, container, etc.)
         monitoring.capture_exception(exc, exp_id=exp_id, benchmark=benchmark)
         return _build("error", SimStats(), f"{type(exc).__name__}: {exc}", None)
@@ -105,7 +124,7 @@ def run_experiment(
     stats = parse_stats(output)
     log_path = _archive(exp_id, files, output) if save_artifacts else None
 
-    if exit_code == 0 and is_success(output):
+    if is_success(output) and (exit_code is None or exit_code == 0):
         return _build("success", stats, None, log_path)
 
     error = f"simulation did not report SUCCESS (exit {exit_code})"
