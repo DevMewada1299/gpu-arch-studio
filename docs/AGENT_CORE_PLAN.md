@@ -11,6 +11,18 @@ Four Claude agents that (1) analyze simulation stats with real insight, and
 (2) autonomously drive an exploration loop: propose config → run → read
 results → reason → propose next config → converge.
 
+## Canonical Types & Benchmark (read first)
+
+- The agents consume **`SimStats`** and produce/propose **`GPUConfig`** — both
+  defined in CLAUDE.md. Use those exact field names. Key stats you'll reason
+  over: `ipc`, `l1_hit_rate`, `l2_hit_rate`, `dram_stalls`, `occupancy`,
+  `shmem_stalls`, `l2_bw`. Config params you can change: `n_clusters`,
+  `cores_per_cluster`, `n_mem`, `shmem_size`, `scheduler`
+  (gto/lrr/two_level_active), `num_sched_per_core`, `l1_sets`, `l2_sets`.
+- Our benchmark is **DCT8x8 (JPEG)**, not GEMM. The GEMM mentions below are
+  illustrative — substitute JPEG/DCT8x8 reasoning (e.g. 8x8 block transforms,
+  small working set, heavy shared-memory use).
+
 ## The Two Modes
 
 **Mode A — Analysis (simpler, build first):**
@@ -93,7 +105,7 @@ The orchestrator prompt receives the FULL history and reasons like a senior
 architect: "We've tried 4 configs. Increasing L1 helped until 64KB then
 plateaued. DRAM is still the bottleneck. Next I'll increase memory channels."
 
-**Test:** run a real exploration on GEMM. Does it actually converge toward a
+**Test:** run a real exploration on DCT8x8 (JPEG). Does it actually converge toward a
 good config? Does the reasoning make sense at each step?
 
 ### Step 5 — Human-in-the-loop intervention (1 hr)
@@ -172,6 +184,40 @@ Start Claude Code in `/backend`:
    passed to the orchestrator's next proposal."
 ```
 
+### Step 6 — Wrap agents in Fetch.ai coordination (1.5 hrs, AFTER agents work)
+
+Only do this once the agents reason correctly as plain Claude calls. This is
+the LIGHT integration — you're not rebuilding the agents, you're adding a
+Fetch.ai messaging layer on top so they qualify as a Fetch multi-agent system.
+
+Write `backend/fetch_agents.py`:
+- `pip install uagents`
+- Register each agent (Memory, Warp, Bottleneck, Orchestrator) as a uAgent
+  with its own address
+- Define a message model for passing stats and analysis between them
+- The Orchestrator uAgent receives stats, messages the 4 specialist uAgents,
+  collects their analysis, then produces the next-config proposal
+- The actual reasoning inside each uAgent's handler is still your Claude call
+  from agent_engine.py — Fetch just handles the agent-to-agent messaging
+
+The point: same reasoning, but now it's a real multi-agent system with agents
+that have identities and message each other through Fetch's protocol. That
+satisfies the Fetch.ai prize requirement.
+
+Keep the plain-Claude path working too — if Fetch integration gets flaky,
+you can fall back to direct calls for the demo and still have the agents work.
+
+## Claude Code Prompt For Fetch
+
+```
+"Build backend/fetch_agents.py. I have 4 working Claude agents in
+agent_engine.py (Memory, Warp, Bottleneck, Orchestrator). Wrap them as
+Fetch.ai uAgents using the uagents library. Each uAgent's message handler
+calls the existing Claude analysis function. The Orchestrator uAgent messages
+the other 3, collects responses, and produces the next config. Keep the
+original direct-call path intact as a fallback."
+```
+
 ## Your Definition Of Done
 
 - Agents say specific, correct things about real stats (not generic filler)
@@ -179,6 +225,8 @@ Start Claude Code in `/backend`:
 - The orchestrator's reasoning is coherent step to step
 - The whole exploration streams cleanly to the frontend
 - A user can inject a constraint and the next proposal respects it
+- Agents wrapped as Fetch uAgents (with direct-call fallback intact)
+
 
 ## Watch Out For
 

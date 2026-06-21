@@ -80,6 +80,15 @@ edit the SETS field (the `32`). Total L1 size = nsets × linesize × assoc.
 So 32:128:4 = 16KB. The config_generator must parse and rewrite ONLY that
 field, preserving the rest of the string exactly. Same for L2 (`64` in dl2).
 
+### IMPORTANT: changing SM Clusters or Memory Controllers needs the interconnect
+The `config_fermi_islip.icnt` interconnect is a fixed-size crossbar:
+`k = n_clusters + n_mem*2` (baseline 15 + 6*2 = 27). If you change
+`-gpgpu_n_clusters` or `-gpgpu_n_mem` you MUST also rewrite the `.icnt`'s `k`
+to match, or GPGPU-Sim segfaults at kernel launch. The config_generator emits
+both files together (`generate_files()`); the runner writes both. The other 6
+params (cores, shmem, scheduler, sched/core, L1, L2 sets) do not touch the
+interconnect and are safe to vary alone.
+
 ## Stats To Parse From Simulation Output (REAL field names)
 
 These are the EXACT strings in our output. Note: output gives MISS rates;
@@ -95,7 +104,7 @@ compute hit_rate = 1 - miss_rate.
 | `L1D_total_cache_miss_rate` | L1 data MISS rate (hit = 1-this) | 0.6151 |
 | `L2_total_cache_miss_rate` | L2 MISS rate (hit = 1-this) | 0.4937 |
 | `L1I_total_cache_miss_rate` | L1 instruction miss rate | 0.0302 |
-| `L2_BW` | L2 bandwidth GB/Sec | 54.0853 |
+| `L2_BW_total` | L2 bandwidth GB/Sec (aggregate; NOT per-partition `L2_BW`) | 82.2801 |
 | `gpgpu_n_stall_shd_mem` | shared mem stalls | 160 |
 | `gpgpu_simulation_time` | wall-clock | 8 sec |
 
@@ -162,24 +171,35 @@ GET  /explore/{session_id}/stream    (SSE)
 
 ## Shared TypeScript / Python Types
 
+> These match the REAL config params and parsed stat fields exactly. The
+> backend `config_generator` params dict uses the same keys as `GPUConfig`.
+
 ```typescript
 interface GPUConfig {
-  n_clusters: number;
-  cores_per_cluster: number;
-  l1_size_kb: number;
-  l2_size_mb: number;
-  scheduler: "gto" | "lrr" | "rrws";
-  n_mem: number;
-  shmem_kb: number;
+  n_clusters: number;          // -gpgpu_n_clusters            (8/15/30/60)
+  cores_per_cluster: number;   // -gpgpu_n_cores_per_cluster   (1/2/4)
+  n_mem: number;               // -gpgpu_n_mem                 (4/6/8/12)
+  shmem_size: number;          // -gpgpu_shmem_size, BYTES     (16384/32768/49152)
+  scheduler: "gto" | "lrr" | "two_level_active";
+  num_sched_per_core: number;  // -gpgpu_num_sched_per_core    (1/2/4)
+  l1_sets: number;             // SETS field of -gpgpu_cache:dl1 (16/32/64/128)
+  l2_sets: number;             // SETS field of -gpgpu_cache:dl2 (32/64/128)
 }
+// NOTE: n_clusters / n_mem also require a matching interconnect file — the
+// backend handles this automatically (see the interconnect note above).
 
 interface SimStats {
-  ipc: number;
-  l1_hit_rate: number;
-  l2_hit_rate: number;
-  dram_stalls: number;
-  occupancy: number;
-  total_insn: number;
+  ipc: number;          // gpu_tot_ipc — headline metric
+  total_insn: number;   // gpu_tot_sim_insn
+  total_cycles: number; // gpu_tot_sim_cycle
+  occupancy: number;    // gpu_occupancy, fraction 0-1 (raw output is %)
+  l1_hit_rate: number;  // 1 - L1D_total_cache_miss_rate, fraction 0-1
+  l2_hit_rate: number;  // 1 - L2_total_cache_miss_rate, fraction 0-1
+  l1i_hit_rate: number; // 1 - L1I_total_cache_miss_rate, fraction 0-1
+  dram_stalls: number;  // gpu_stall_dramfull
+  shmem_stalls: number; // gpgpu_n_stall_shd_mem
+  l2_bw: number;        // L2_BW, GB/s
+  sim_time_sec: number; // gpgpu_simulation_time, wall-clock seconds
 }
 
 interface Experiment {
@@ -212,8 +232,10 @@ takes minutes — judges won't wait. Build a `DEMO_MODE` flag:
 ## What's Working (update this as you go)
 
 - [x] GPGPU-Sim runs in Docker on Mac
-- [ ] docker_manager can exec a sim from Python
-- [ ] stats_parser extracts real fields from output
+- [x] docker_manager can exec a sim from Python
+- [x] config_generator templates configs (+ matching interconnect)
+- [x] stats_parser extracts real fields from output
+- [x] runner: GPUConfig -> run -> parsed Experiment (stored, Sentry on failure)
 - [ ] FastAPI /experiments/run works end to end
 - [ ] Frontend config panel sends runs
 - [ ] SSE streaming live output to UI
