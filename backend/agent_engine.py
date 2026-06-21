@@ -17,11 +17,12 @@ conflict) and matches the prompt contract in agents/*.md. An optional `on_text`
 callback streams tokens for the SSE layer.
 """
 
+import json
 import os
 import re
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional
 
-from .models import AgentOutput, GPUConfig, SimStats
+from .models import AgentOutput, GPUConfig, OrchestratorDecision, SimStats
 
 PROMPT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "agents")
 
@@ -132,3 +133,126 @@ def analyze(
         "bottleneck", stats, config, benchmark, extra_context=synthesis, on_text=cb
     )
     return out
+
+
+# --- Orchestrator (Mode B) ------------------------------------------------
+
+# Labels may arrive bare or wrapped in markdown ("## NEXT_CONFIG:", "**REASONING:**").
+_LABELS = ("REASONING", "NEXT_CONFIG", "CONVERGED", "BEST_SO_FAR")
+_NEXT_LABEL = r"(?:\n\s*[#*]{0,3}\s*(?:REASONING|NEXT_CONFIG|CONVERGED|BEST_SO_FAR)\b|\Z)"
+
+
+def _section(text: str, label: str) -> str:
+    """Extract a labeled section, tolerating markdown prefixes/emphasis."""
+    pat = rf"[#*]{{0,3}}\s*{label}\*{{0,2}}\s*:?\s*(.*?){_NEXT_LABEL}"
+    m = re.search(pat, text, re.DOTALL | re.IGNORECASE)
+    return m.group(1).strip(" *#`\n") if m else ""
+
+
+def _format_history(history: List[dict]) -> str:
+    """Compact one-line-per-experiment summary for the orchestrator prompt."""
+    if not history:
+        return "(none yet — this is the first proposal)"
+    lines = []
+    for h in history:
+        exp = h["experiment"]
+        c, s = exp.config, exp.stats
+        bott = h.get("analysis", {}).get("bottleneck")
+        bott_note = f" bottleneck={bott.status}" if bott else ""
+        lines.append(
+            f"  exp {exp.exp_id}: clusters={c.n_clusters} cores={c.cores_per_cluster} "
+            f"n_mem={c.n_mem} shmem={c.shmem_size} sched={c.scheduler} "
+            f"l1_sets={c.l1_sets} l2_sets={c.l2_sets} -> ipc={s.ipc} occ={s.occupancy} "
+            f"l1_hit={s.l1_hit_rate} l2_hit={s.l2_hit_rate} dram_stalls={s.dram_stalls} "
+            f"[{exp.status}]{bott_note}"
+        )
+    return "\n".join(lines)
+
+
+def _parse_decision(text: str) -> OrchestratorDecision:
+    reasoning = _section(text, "REASONING")
+    converged = "true" in _section(text, "CONVERGED").lower()
+    best = _section(text, "BEST_SO_FAR")
+
+    # Find the config JSON anywhere in the text (robust to markdown/code fences):
+    # the first flat {...} block that contains "n_clusters". Our config has no
+    # nested objects, so a non-brace body is a safe, fence-proof match.
+    next_config = None
+    explicit_null = bool(
+        re.search(r"NEXT_CONFIG[^\n{]*?:\s*[`*]*\s*null", text, re.IGNORECASE)
+    )
+    if not explicit_null:
+        for m in re.finditer(r"\{[^{}]*\}", text, re.DOTALL):
+            blob = m.group(0)
+            if "n_clusters" in blob:
+                try:
+                    next_config = GPUConfig.from_dict(json.loads(blob))
+                    break
+                except (ValueError, json.JSONDecodeError):
+                    continue
+
+    # Reasoning fallback: if the labeled section was empty, use the text that
+    # precedes the config JSON (still real architect reasoning, just unlabeled).
+    if not reasoning:
+        cut = text.find("{")
+        reasoning = (text[:cut] if cut > 0 else text).strip(" *#`\n")
+
+    exp_id_m = re.search(r"\b([0-9a-f]{8})\b", best)
+    return OrchestratorDecision(
+        reasoning=reasoning,
+        next_config=next_config,
+        converged=converged,
+        best_exp_id=exp_id_m.group(1) if exp_id_m else None,
+        best_reason=best,
+    )
+
+
+def propose_next(
+    history: List[dict],
+    goal: str,
+    constraints: Optional[dict] = None,
+    on_text: Optional[Callable[[str], None]] = None,
+) -> OrchestratorDecision:
+    """The orchestrator: reason over the full history, propose the next config.
+
+    `history` is the explore loop's list of {"experiment": Experiment,
+    "analysis": {agent: AgentOutput}}. Uses Sonnet 4.6 with adaptive thinking.
+    """
+    with open(os.path.join(PROMPT_DIR, "orchestrator.md")) as f:
+        system = f.read()
+
+    latest = history[-1]["analysis"] if history else {}
+    latest_block = "\n".join(
+        f"  {a}: {latest[a].text}" for a in SPECIALISTS if a in latest
+    )
+    user = (
+        f"GOAL: {goal}\n"
+        f"CONSTRAINTS: {json.dumps(constraints) if constraints else 'none'}\n\n"
+        f"EXPERIMENT HISTORY (oldest first):\n{_format_history(history)}\n\n"
+        f"LATEST ANALYSIS:\n{latest_block or '(none)'}"
+    )
+
+    client = _get_client()
+    # max_tokens must cover adaptive-thinking tokens AND the answer. 2000 was too
+    # small: with verbose specialist analyses in the prompt, thinking consumed the
+    # whole budget and the text answer came back empty (the loop then stalled at
+    # iteration 0). 8000 leaves ample room for both.
+    kwargs = dict(
+        model=ORCHESTRATOR_MODEL,
+        max_tokens=8000,
+        thinking={"type": "adaptive"},
+        output_config={"effort": "high"},
+        system=system,
+        messages=[{"role": "user", "content": user}],
+    )
+    text = ""
+    if on_text is not None:
+        with client.messages.stream(**kwargs) as stream:
+            for chunk in stream.text_stream:
+                text += chunk
+                on_text(chunk)
+    else:
+        resp = client.messages.create(**kwargs)
+        text = "".join(b.text for b in resp.content if b.type == "text")
+
+    return _parse_decision(text)
