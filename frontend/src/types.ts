@@ -98,7 +98,62 @@ export type RunStreamEvent =
     }
   | { type: "error"; message: string };
 
-// ── Agent UI (frontend-only; the /explore stream contract is still pending) ─
+// ── Autonomous exploration SSE (GET /explore/{session_id}/stream) ──────────
+// Backend status colors for agent cards.
+export type AgentColor = "green" | "amber" | "red";
+
+export interface AgentAnalysis {
+  agent: string;
+  text: string;
+  status: AgentColor;
+}
+
+export interface RecalledItem {
+  exp_id: string;
+  text: string;
+  score: number;
+  metadata?: Record<string, unknown>;
+}
+
+export type ExploreStreamEvent =
+  | { type: "iteration_start"; iteration: number; config: GPUConfig }
+  | {
+      type: "experiment";
+      iteration: number;
+      exp_id: string;
+      status: ExperimentStatus;
+      config: GPUConfig;
+      stats: SimStats;
+      error: string | null;
+    }
+  | {
+      type: "analysis";
+      iteration: number;
+      agents: {
+        memory: AgentAnalysis;
+        warp: AgentAnalysis;
+        bottleneck: AgentAnalysis;
+      };
+    }
+  | { type: "recall"; recalled: RecalledItem[] }
+  | {
+      type: "proposal";
+      iteration: number;
+      reasoning: string;
+      next_config: GPUConfig | null;
+      converged: boolean;
+      best_exp_id: string | null;
+      best_reason: string | null;
+    }
+  | {
+      type: "converged";
+      best_exp_id: string | null;
+      pareto: string[];
+      iterations: number;
+    }
+  | { type: "note" | "error"; message: string };
+
+// ── Agent UI (frontend card model) ─────────────────────────────────────────
 export type AgentType = "memory" | "warp" | "bottleneck" | "orchestrator";
 export type AgentStatus = "idle" | "thinking" | "complete" | "error";
 

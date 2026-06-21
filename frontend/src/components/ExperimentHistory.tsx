@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Microscope, AlertTriangle } from "lucide-react";
 import CompareModal from "./CompareModal";
 import DeepDive from "./DeepDive";
-import type { Experiment, GPUConfig } from "../types";
+import { api } from "../lib/api";
+import type { Experiment, GPUConfig, SimReport } from "../types";
 import { mockHistory, mockReport } from "../mocks";
 
 const SCHED_LABEL: Record<GPUConfig["scheduler"], string> = {
@@ -38,6 +39,27 @@ export default function ExperimentHistory({
   const [selected, setSelected] = useState<string[]>([]);
   const [comparing, setComparing] = useState(false);
   const [detailExp, setDetailExp] = useState<Experiment | null>(null);
+  const [detailReport, setDetailReport] = useState<SimReport | null>(null);
+  const [prevDetailExp, setPrevDetailExp] = useState<Experiment | null>(null);
+
+  // Reset the report when the opened experiment changes (render-phase pattern).
+  if (detailExp !== prevDetailExp) {
+    setPrevDetailExp(detailExp);
+    setDetailReport(null);
+  }
+
+  // Fetch the heavy SimReport only when a deep-dive opens (two-tier fetch).
+  useEffect(() => {
+    if (!detailExp) return;
+    let active = true;
+    api
+      .details(detailExp.exp_id)
+      .then((r) => active && setDetailReport(r))
+      .catch(() => active && setDetailReport(mockReport)); // fallback for offline/mock rows
+    return () => {
+      active = false;
+    };
+  }, [detailExp]);
 
   const toggle = (exp: Experiment) => {
     if (exp.status !== "success") return; // only successful runs are comparable
@@ -181,7 +203,7 @@ export default function ExperimentHistory({
       {detailExp && (
         <DeepDive
           experiment={detailExp}
-          report={mockReport}
+          report={detailReport ?? mockReport}
           onClose={() => setDetailExp(null)}
         />
       )}

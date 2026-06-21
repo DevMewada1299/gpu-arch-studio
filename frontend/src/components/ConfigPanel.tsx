@@ -2,7 +2,6 @@ import { useState } from "react";
 import { ChevronDown, RotateCcw } from "lucide-react";
 import { SegmentedWithOther } from "./SegmentedWithOther";
 import type { GPUConfig } from "../types";
-import { BENCHMARKS, type Benchmark } from "../constants";
 import { baselineConfig } from "../mocks";
 
 // Discrete allowed values — straight from CLAUDE.md. These are enumerated
@@ -33,8 +32,10 @@ const SCHEDULER_LABELS: Record<GPUConfig["scheduler"], string> = {
 interface ConfigPanelProps {
   config: GPUConfig;
   onChange: (config: GPUConfig) => void;
-  benchmark: Benchmark;
-  onBenchmarkChange: (b: Benchmark) => void;
+  benchmark: string;
+  onBenchmarkChange: (b: string) => void;
+  // Populated dynamically from GET /health → benchmarks.
+  benchmarks: string[];
   disabled?: boolean;
 }
 
@@ -104,6 +105,7 @@ export default function ConfigPanel({
   onChange,
   benchmark,
   onBenchmarkChange,
+  benchmarks,
   disabled = false,
 }: ConfigPanelProps) {
   const set = <K extends keyof GPUConfig>(key: K, value: GPUConfig[K]) =>
@@ -121,7 +123,10 @@ export default function ConfigPanel({
       <div className="rounded-2xl border border-neutral-200/80 bg-white px-4 py-4 space-y-2">
         <span className="text-[13px] font-medium text-neutral-700">Benchmark</span>
         <SegmentedWithOther
-          options={BENCHMARKS.map((b) => ({ value: b, label: b }))}
+          options={(benchmarks.length ? benchmarks : [benchmark]).map((b) => ({
+            value: b,
+            label: b,
+          }))}
           value={benchmark}
           onChange={onBenchmarkChange}
         />

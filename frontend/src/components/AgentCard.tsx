@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Database, Layers, Activity, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { AgentType, AgentStatus, AgentVerdict, GPUConfig } from "../types";
@@ -121,6 +122,29 @@ export default function AgentCard({
   const { Icon } = meta;
   const active = status === "thinking" || status === "complete";
 
+  // Client-side typewriter: agent text arrives as a complete block, so reveal
+  // it progressively here (the backend doesn't stream tokens).
+  const [count, setCount] = useState(0);
+  const [prevContent, setPrevContent] = useState(content);
+  if (content !== prevContent) {
+    // React's "adjust state during render" pattern — reset the reveal.
+    setPrevContent(content);
+    setCount(0);
+  }
+  useEffect(() => {
+    if (!content) return;
+    const step = Math.max(2, Math.ceil(content.length / 90));
+    let i = 0;
+    const id = setInterval(() => {
+      i = Math.min(content.length, i + step);
+      setCount(i);
+      if (i >= content.length) clearInterval(id);
+    }, 18);
+    return () => clearInterval(id);
+  }, [content]);
+  const shown = content.slice(0, count);
+  const revealing = count < content.length;
+
   return (
     <div
       className={`rounded-2xl border bg-white p-5 transition-all duration-300 ${
@@ -157,11 +181,11 @@ export default function AgentCard({
             </div>
           </div>
 
-          {/* Reasoning body */}
+          {/* Reasoning body (client-side typewriter) */}
           {active && content !== "" && (
             <p className="mt-3 text-[14px] leading-7 text-neutral-700 animate-fade-in-up">
-              {content}
-              {status === "thinking" && (
+              {shown}
+              {(status === "thinking" || revealing) && (
                 <span
                   className="inline-block w-[2px] h-[15px] ml-0.5 align-middle animate-soft-blink rounded-full"
                   style={{ background: meta.accent }}
