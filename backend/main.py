@@ -289,6 +289,31 @@ async def explore_stream(session_id: str):
     return _sse_response(handle)
 
 
+class AgentAnalyzeRequest(BaseModel):
+    agent: str                      # "memory" | "warp" | "bottleneck"
+    config: GPUConfigIn
+    stats: dict                     # SimStats fields
+    benchmark: str = DEFAULT_BENCHMARK
+
+
+@app.post("/agent/analyze")
+async def agent_analyze(req: AgentAnalyzeRequest):
+    """Run ONE specialist agent on given stats — used by the multi-agent Fetch
+    bureau so each specialist uAgent does its real Claude analysis here (where
+    the heavy deps live)."""
+    from .agent_engine import run_specialist
+    from .models import SimStats
+
+    out = await asyncio.to_thread(
+        run_specialist,
+        req.agent,
+        SimStats.from_dict(req.stats),
+        GPUConfig.from_dict(req.config.model_dump()),
+        req.benchmark,
+    )
+    return out.to_dict()
+
+
 @app.post("/explore/run")
 async def explore_run(req: ExploreRequest):
     """Synchronous, bounded exploration that returns a final summary (no SSE).
